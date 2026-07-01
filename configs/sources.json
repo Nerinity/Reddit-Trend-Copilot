@@ -1,0 +1,650 @@
+{
+  "taxonomy": {
+    "product_category_theme_csv": "configs/taxonomy/product_taxonomy_clean.csv"
+  },
+  "dashboard_mentions": {
+    "checkpoint_each_source": true,
+    "max_queries": 500,
+    "taxonomy_query_limit": 400,
+    "google_news_enabled": false,
+    "gdelt_enabled": false,
+    "hackernews_enabled": false,
+    "producthunt_enabled": false,
+    "reddit_pullpush_enabled": true,
+    "reddit_pullpush_per_query": 120,
+    "reddit_pullpush_comments_enabled": true,
+    "reddit_subreddit_pullpush_enabled": true,
+    "reddit_subreddit_pullpush_per_subreddit": 150,
+    "reddit_subreddit_pullpush_max_subreddits": 600,
+    "reddit_subreddit_pullpush_comments_enabled": true,
+    "reddit_subreddit_pullpush_max_pages": 5,
+    "reddit_rss_enabled": true,
+    "reddit_rss_per_subreddit": 100,
+    "reddit_rss_max_subreddits": 500,
+    "reddit_rss_sorts": ["hot", "new", "top?t=week", "top?t=month", "top?t=year", "rising"],
+    "youtube_ytdlp_enabled": false
+  },
+  "semantic_filter": {
+    "min_relevance_score": 0.015,
+    "keep_tiktok_score": 0.18,
+    "tiktok_priority_boost": 0.3,
+    "keep_all": false,
+    "seed_queries": [
+      "TikTok made me buy it",
+      "TikTok Shop honest review",
+      "Amazon finds worth it",
+      "viral product review",
+      "creator affiliate product",
+      "UGC creator product sample",
+      "live shopping product",
+      "North America consumer trend",
+      "favorite things product recommendation",
+      "holy grail product",
+      "not worth it viral product",
+      "dupe worth it",
+      "sold out restock product",
+      "new launch review",
+      "haul worth it",
+      "product recommendation 2026",
+      "best purchase 2026",
+      "obsessed with this product"
+    ],
+    "business_contexts": [
+      {
+        "label": "tiktok_creator_commerce",
+        "text": "TikTok Shop, TikTok made me buy it, creator affiliate, live shopping, viral product review, haul, unboxing, GRWM, UGC creator, commission, creator storefront, influencer product recommendation"
+      },
+      {
+        "label": "consumer_product_discovery",
+        "text": "favorite product, holy grail, worth it, not worth it, honest review, dupe, Amazon finds, target finds, best purchase, product recommendation, restock, sold out, new launch"
+      },
+      {
+        "label": "beauty_wellness_lifestyle",
+        "text": "skincare routine, beauty product, wellness supplement, protein coffee, magnesium, gut health, red light therapy, ice roller, hair care, self care, fitness recovery, nail art"
+      },
+      {
+        "label": "electronics_tech_gadgets",
+        "text": "smartphone, wireless earbuds, smartwatch, laptop, gaming console, camera, drone, smart home, wearable tech, phone case, keyboard, monitor setup"
+      },
+      {
+        "label": "fashion_accessories",
+        "text": "outfit, haul, sneakers, handbag, jewelry, watches, sunglasses, capsule wardrobe, streetwear, quiet luxury, Y2K fashion, athleisure"
+      },
+      {
+        "label": "home_food_family_pets",
+        "text": "home organization, cleaning hack, kitchen gadget, functional beverage, meal prep, baby product, pet product, dog enrichment, cat fountain, decor trend, cozy home, air fryer recipe"
+      },
+      {
+        "label": "sports_outdoor_auto",
+        "text": "gym gear, running shoes, camping equipment, hiking gear, cycling accessories, car detailing, dashboard cam, car accessories, motorcycle gear"
+      },
+      {
+        "label": "creator_business_signal",
+        "text": "brand deal, sponsorship, paid partnership, PR package, gifted product, affiliate conversion, product samples, content hook, social commerce, ecommerce, Shopify, Amazon seller"
+      }
+    ]
+  },
+  "reddit": {
+    "posts_per_subreddit": 45,
+    "comments_per_post": 5,
+    "search_results_per_query": 40,
+    "sorts": ["hot", "new", "top"],
+    "search_queries": [
+      "\"TikTok made me buy it\"",
+      "\"viral product\" \"worth it\"",
+      "\"Amazon finds\" \"review\"",
+      "\"TikTok Shop\" \"review\"",
+      "\"dupe\" \"worth it\"",
+      "\"obsessed with\" \"product\"",
+      "\"holy grail\" skincare",
+      "\"best purchase\" 2026",
+      "\"new launch\" review 2026",
+      "\"haul\" \"worth it\" 2026",
+      "\"honest review\" product 2026",
+      "\"restock\" \"sold out\" 2026",
+      "\"underconsumption core\"",
+      "\"quiet luxury\"",
+      "\"protein coffee\"",
+      "\"red light therapy\"",
+      "\"walking pad\"",
+      "\"matcha\" \"routine\"",
+      "\"dopamine decor\"",
+      "\"glass skin\" routine",
+      "\"pilates\" \"body\"",
+      "\"BookTok\" recommendation",
+      "\"gut health\" supplement",
+      "\"collagen\" \"worth it\"",
+      "\"creatine\" \"gummies\"",
+      "\"magnesium glycinate\"",
+      "\"electrolyte\" \"powder\"",
+      "\"air fryer\" recipe 2026",
+      "\"mini printer\"",
+      "\"smart ring\"",
+      "\"mechanical keyboard\" recommendation",
+      "\"noise cancelling\" earbuds",
+      "\"dashcam\" recommendation",
+      "\"robot vacuum\" worth it",
+      "\"Stanley\" tumbler",
+      "\"Dyson\" review",
+      "\"lululemon\" align",
+      "\"New Balance\" 550",
+      "\"Hoka\" review",
+      "\"moissanite\" engagement ring",
+      "\"capsule wardrobe\" 2026",
+      "\"cat water fountain\" recommendation",
+      "\"dog enrichment\" toys",
+      "\"slow feeder\" dog",
+      "\"packing cubes\" recommendation",
+      "\"carry on\" backpack",
+      "\"squishmallow\" new",
+      "\"Lego\" adult set"
+    ],
+    "subreddit_categories": {
+
+      "beauty_skincare": [
+        "SkincareAddiction", "30PlusSkinCare", "AsianBeauty", "scacjdiscussion",
+        "KoreanBeauty", "EuroSkincare", "tretinoin", "acne", "Rosacea",
+        "DermatologyQuestions", "AntiAging", "Eczema", "NaturalBeauty",
+        "CleanBeauty", "DIYBeauty", "Slugging", "SkincareFlatlays",
+        "30PlusSkinCare", "Sunscreen"
+      ],
+
+      "makeup": [
+        "MakeupAddiction", "drugstoreMUA", "Makeup", "Sephora", "Ulta",
+        "makeupflatlays", "BeautyGuruChatter", "Contouring", "EyelinerAdvice",
+        "MakeupRehab", "HighEndMakeup", "DupesMakeup", "MakeupLounge",
+        "LipProductPorn", "EyeshadowPalettes", "MACcosmetics"
+      ],
+
+      "haircare": [
+        "HaircareScience", "curlyhair", "Naturalhair", "Wavyhair",
+        "4hair", "3Chaired", "femalehairadvice", "HairLossMen",
+        "tressless", "longhair", "HairDye", "bleachingchair",
+        "FierceHairCare", "SalonProfessionals", "HairExtensions"
+      ],
+
+      "nail_care": [
+        "RedditLaqueristas", "Nails", "nailsart", "gelpolish",
+        "naildip", "pressonnails", "naildesigns", "NailArtAddict",
+        "AcrylicNails", "HealthyNails"
+      ],
+
+      "fragrance": [
+        "fragrance", "FemFragLab", "MaleFragrance", "Perfume",
+        "DIYfragrance", "ArabianPerfumes", "DesignerFragrance",
+        "Frugal_Fragrance", "Colognes", "PerfumePals"
+      ],
+
+      "personal_care_mens": [
+        "malegrooming", "wicked_edge", "Wetshaving", "BudgetBeauty",
+        "ManufacturersBeautyHelp", "BarberShop", "BeardAdvice",
+        "beards", "BaldHairLoss", "Skincare_Addiction"
+      ],
+
+      "oral_dental_care": [
+        "Dentistry", "braces", "Invisalign", "TeethWhitening",
+        "DentalHygiene", "AskDentists", "OralHygiene"
+      ],
+
+      "feminine_body_care": [
+        "TwoXChromosomes", "AskWomen", "Periods", "PCOS",
+        "Menopause", "WomensHealth", "BirthControl", "endometriosis"
+      ],
+
+      "phones_tablets": [
+        "iphone", "Android", "samsung", "GooglePixel", "OnePlus",
+        "tablets", "iPad", "GalaxyTab", "SuggestAPhone",
+        "iOSProgramming", "AndroidQuestions"
+      ],
+
+      "mobile_accessories": [
+        "phoneaccessories", "MagSafe", "cases", "iphone",
+        "Android", "ScreenProtector", "phonecases"
+      ],
+
+      "audio_video": [
+        "headphones", "audiophile", "BudgetAudiophile", "iems",
+        "SoundSystem", "hometheater", "Soundbars", "StereoAdvice",
+        "AVExchange", "vinyl", "cassetteculture", "podcasts",
+        "SpeakerAdvice", "HIFI", "ultra_hifi"
+      ],
+
+      "cameras_photography": [
+        "photography", "analog", "mirrorlesscameras", "canon",
+        "nikon", "fujifilm", "videography", "Filmmakers",
+        "photocritique", "AnalogCommunity", "SonyAlpha",
+        "Cameras", "amateurphotography", "streetphotography",
+        "portraitphotography", "CameraTraps"
+      ],
+
+      "gaming_consoles": [
+        "gaming", "NintendoSwitch", "SteamDeck", "PS5",
+        "XboxSeriesX", "pcgaming", "retrogaming", "Gameboy",
+        "gamedeals", "SwitchHacks", "truegaming", "patientgamers",
+        "NintendoSwitchDeals", "PS5deals", "GamePassGameClub"
+      ],
+
+      "smart_wearables": [
+        "smartwatch", "Garmin", "AppleWatch", "ouraring",
+        "fitbit", "wearables", "whoop", "smartrings",
+        "FitnessTrackers", "GarminFenix", "WearOS"
+      ],
+
+      "computers_laptops": [
+        "laptops", "SuggestALaptop", "mac", "thinkpad",
+        "chromebook", "Surface", "macbookpro", "UltraBookPro",
+        "StudentLaptops", "linux", "linuxmasterrace"
+      ],
+
+      "computer_accessories_peripherals": [
+        "MechanicalKeyboards", "MouseReview", "pcmasterrace",
+        "buildapc", "Monitors", "ultrawidemasterrace",
+        "VerticalMousePad", "MousepadReview", "ergonomics",
+        "homeoffice", "WorkFromHome", "battlestations", "DeskTours"
+      ],
+
+      "computer_components": [
+        "buildapc", "hardware", "overclocking", "SFF",
+        "amd", "nvidia", "Intel", "GPUMD", "SingleBoardComp"
+      ],
+
+      "data_storage_network": [
+        "DataHoarder", "homelab", "synology", "HomeNetworking",
+        "HomeServer", "techsupport", "selfhosted", "privacy"
+      ],
+
+      "office_stationery": [
+        "notebooks", "pens", "fountainpens", "PaperPens",
+        "journaling", "stationery", "bujo", "bulletjournal",
+        "Journaling", "PenAddict", "PlannersAddicts",
+        "ArtJournaling", "studyblr", "studygram"
+      ],
+
+      "education_devices": [
+        "kindle", "ereader", "RemarkableTablet", "supernote",
+        "digitalnomad", "notetaking", "ipad", "DigitalPlanners"
+      ],
+
+      "supplements_nutrition": [
+        "Supplements", "Nootropics", "Biohackers", "longevity",
+        "HubermanLab", "nutrition", "guthealth", "Microbiome",
+        "PlantBasedDiet", "VeganFitness", "intermittentfasting",
+        "xxketo", "ketorecipes", "carnivore", "SaturatedFat",
+        "Testosterone", "PEDs", "creatine", "ProteinPowders"
+      ],
+
+      "health_wellness": [
+        "sleep", "insomnia", "SleepApnea", "ChronicIllness",
+        "ChronicPain", "diabetes", "POTS", "Fibromyalgia",
+        "Anxiety", "depression", "ADHD", "mentalhealth",
+        "meditation", "selfimprovement", "productivity",
+        "herbalism", "CBD", "alternativehealth", "WellnessOver30"
+      ],
+
+      "sexual_wellness": [
+        "sex", "sexover30", "BirthControl", "TryingForABaby",
+        "sexpositive"
+      ],
+
+      "food_cooking": [
+        "Cooking", "AskCulinary", "recipes", "MealPrepSunday",
+        "foodhacks", "KitchenConfidential", "food",
+        "veganrecipes", "glutenfree", "EatCheapAndHealthy",
+        "Frugal", "budgetfood", "College_eats", "cookingforbeginners",
+        "1200isplenty", "gainit", "highprotein"
+      ],
+
+      "snacks_beverages": [
+        "Coffee", "espresso", "tea", "cocktails", "Mocktails",
+        "boba", "energydrinks", "FunctionalBeverages",
+        "CoffeeLovers", "TeaLovers", "snacks", "traderjoes",
+        "Costco", "aldi", "CostcoFinds", "TraderJoesFan"
+      ],
+
+      "baking": [
+        "Baking", "Breadit", "cakedecorating", "macarons",
+        "pastry", "ArtisanBread", "VeganBaking", "GlutenFreeBaking",
+        "Sourdough", "Cookies", "Cakes", "Brownies"
+      ],
+
+      "womens_fashion": [
+        "femalefashionadvice", "FashionAdvice", "OUTFITS",
+        "weddingdress", "Prom", "FrugalFemaleFashion",
+        "PlusSizeFashion", "PetiteFashionAdvice", "TallWomen",
+        "Lingerie", "swimwear", "CasualWomensFashion",
+        "weddingplanning", "DressedUp", "womensstyle"
+      ],
+
+      "mens_fashion": [
+        "malefashionadvice", "streetwear", "frugalmalefashion",
+        "NavyBlazer", "weddingplanning", "MensFashionUK",
+        "malelifestyle", "preppy", "ClassicMensFashion"
+      ],
+
+      "fashion_accessories": [
+        "Watches", "WatchHorology", "Watchexchange",
+        "glasses", "Eyeglasses", "sunglasses", "GlassesFrames",
+        "HairAccessories", "barrettes", "scrunchies",
+        "belts", "scarves", "hats", "Hats"
+      ],
+
+      "wigs_hair_extensions": [
+        "wigs", "HairExtensions", "WigCommunity", "BlackHair",
+        "Weave", "lacewig", "frontals"
+      ],
+
+      "costume_fashion_jewelry": [
+        "jewelry", "handmadejewelry", "CostumeJewelry",
+        "DIYJewelry", "beadwork", "WireWrapping"
+      ],
+
+      "fine_jewelry": [
+        "EngagementRings", "Diamonds", "moissanite",
+        "finejewelry", "WeddingJewelry", "JewelryDesign",
+        "vintagejewelry", "antiquesjewelry"
+      ],
+
+      "silver_gold_jewelry": [
+        "silversmithing", "silverjewelry", "GoldJewelry",
+        "WaterproofJewelry", "14k", "stackingrings",
+        "RingStack", "LayeredNecklaces"
+      ],
+
+      "crystals_gemstones": [
+        "Crystals", "Minerals", "lapidary", "Gemstones",
+        "witchcraft", "NaturalCrystals", "CrystalHealing"
+      ],
+
+      "sneakers_footwear": [
+        "Sneakers", "RunningShoeGeeks", "SneakerMarket",
+        "Nike", "Adidas", "NewBalance", "HOKA", "OnRunning",
+        "SoleCollector", "Yeezys", "SneakerFits",
+        "Heels", "WomenShoes", "BootCrit"
+      ],
+
+      "kitchenware_cookware": [
+        "castiron", "Cooking", "instantpot", "PressureCooking",
+        "seriouseats", "KitchenAid", "Vitamix", "CookingEquipment",
+        "BuyItForLife", "cookware", "nonstick", "WokCooking"
+      ],
+
+      "kitchen_knives": [
+        "chefknives", "knives", "KnifeDeals", "Bladesmithing",
+        "sharpening", "KitchenKnives"
+      ],
+
+      "bakeware_gadgets": [
+        "Baking", "pastry", "cakedecorating", "BreadMachines",
+        "kitchentools", "GadgetsAndGizmos"
+      ],
+
+      "drinkware_tumblers": [
+        "HydroFlask", "StanleyCups", "Tumblers", "YetiCoolers",
+        "DrinkwareNerd", "starbucksdrinks", "CoffeeMugs"
+      ],
+
+      "tea_coffee_gear": [
+        "Coffee", "espresso", "tea", "CoffeeMaker",
+        "pourover", "CoffeeTalk", "TeaLovers", "matcha",
+        "JapaneseTea", "ColdBrew", "MokaPot"
+      ],
+
+      "bar_wine": [
+        "cocktails", "wine", "whiskey", "beer",
+        "winemaking", "homebrewing", "Bartenders",
+        "Scotch", "bourbon", "rum", "gin"
+      ],
+
+      "bbq_grilling": [
+        "BBQ", "grilling", "smoking", "pelletgrills",
+        "Traeger", "BigGreenEgg", "SmokedMeats", "outdoorcooking"
+      ],
+
+      "home_decor": [
+        "HomeDecorating", "InteriorDesign", "CozyPlaces",
+        "minimalism", "cottagecore", "maximalism", "hygge",
+        "DesignMyRoom", "malelivingspace", "femalelivingspace",
+        "Apartmentliving", "roomdecor", "aesthetics",
+        "PlantedTank", "houseplants", "IndoorGarden",
+        "candles", "WaxMelts", "HomeFragrance"
+      ],
+
+      "home_organization": [
+        "organization", "declutter", "konmari", "CleaningTips",
+        "HomeOrganization", "minimalism", "ZeroWaste",
+        "Anticonsumption", "SpaceOptimization", "laundry",
+        "LaundryRoom", "StorageSolutions"
+      ],
+
+      "home_textiles": [
+        "Bedding", "WeightedBlankets", "SheetReview",
+        "pillows", "blankets", "quilting", "sewing",
+        "fabrics", "CrossStitch", "Embroidery", "Knitting"
+      ],
+
+      "home_lighting_smart": [
+        "SmartHome", "philipshue", "Lighting", "GrowLights",
+        "HomeKit", "googlehome", "alexa", "Automation",
+        "homeautomation", "ring", "nestdoorbells"
+      ],
+
+      "home_security": [
+        "homesecurity", "ringdoorbell", "SimpliSafe",
+        "homeautomation", "securitycameras", "CCTV"
+      ],
+
+      "garden_outdoor": [
+        "gardening", "vegetablegardening", "succulents",
+        "houseplants", "IndoorGarden", "orchids", "Permaculture",
+        "composting", "lawncare", "landscaping", "flowers",
+        "patio", "outdoorliving", "UrbanGardening"
+      ],
+
+      "home_improvement_diy": [
+        "DIY", "HomeImprovement", "Renovation", "electricians",
+        "Plumbing", "HVAC", "Carpentry", "flooring",
+        "TileAdvice", "Drywall", "kitchenremodel", "bathroomremodel"
+      ],
+
+      "solar_energy": [
+        "solar", "solarenergy", "SolarPanels", "SolarDIY",
+        "homelab", "PowerWalls", "OffGrid"
+      ],
+
+      "household_appliances": [
+        "airfryer", "instantpot", "Vitamix", "KitchenAid",
+        "Roomba", "robotvacuum", "VacuumCleaners", "Dyson",
+        "washingmachine", "dishwasher", "refrigerator",
+        "homegym", "SmartHome", "SteamCleaners", "PressureWashers"
+      ],
+
+      "fitness_sports": [
+        "Fitness", "xxfitness", "homegym", "WeightTraining",
+        "loseit", "bodyweightfitness", "pilates", "yoga",
+        "running", "cycling", "swimming", "CrossFit",
+        "orangetheory", "BodybuildingGurus", "powerlifting",
+        "weightlifting", "StrongLifts", "beginnerfitness",
+        "naturalbodybuilding", "Calisthenics"
+      ],
+
+      "sports_equipment": [
+        "pickleball", "tennis", "golf", "basketball", "soccer",
+        "volleyball", "badminton", "TableTennis", "baseball",
+        "climbing", "bouldering", "MartialArts", "boxing",
+        "bjj", "surfing", "skiing", "snowboarding", "Skateboarding"
+      ],
+
+      "camping_hiking": [
+        "CampingGear", "camping", "hiking", "Ultralight",
+        "backpacking", "carcamping", "overlanding", "VanLife",
+        "trailrunning", "Mountaineering", "WildernessBackpacking",
+        "CampingandHiking", "solotravel", "NationalParks"
+      ],
+
+      "outdoor_water_sports": [
+        "kayaking", "surfing", "swimming", "OpenWaterSwimming",
+        "scuba", "fishing", "Fishing", "flyfishing",
+        "boating", "sailing", "paddleboarding"
+      ],
+
+      "sports_clothing_footwear": [
+        "lululemon", "Athletica", "Gymshark", "RunningShoeGeeks",
+        "Sneakers", "Nike", "Adidas", "HOKA", "OnRunning",
+        "swimwear", "TightsTights", "SportsBra"
+      ],
+
+      "bags_luggage": [
+        "onebag", "ManyBaggers", "handbags", "PurseForum",
+        "backpacks", "EDC", "LuggageAdvice", "travel",
+        "LouisVuitton", "Coach", "Chanel", "Hermes",
+        "Designerhandbags", "Longchamp", "ToteBags"
+      ],
+
+      "baby_maternity": [
+        "beyondthebump", "BabyBumps", "NewParents",
+        "Parenting", "Mommit", "daddit", "toddlers",
+        "babywearing", "clothdiaps", "workingmoms",
+        "SAHP", "Montessori", "breastfeeding",
+        "FormulaFeeders", "NannyEmployers", "babygear"
+      ],
+
+      "kids_fashion_toys": [
+        "toddlers", "Parenting", "Mommit", "kidsclothes",
+        "babyclothes", "toys", "KidsToys", "Kidsgames"
+      ],
+
+      "educational_toys": [
+        "Montessori", "toddlers", "kidsactivities",
+        "learnprogramming", "stem", "RoboticsKids",
+        "BoardGamesForKids", "KidsArt"
+      ],
+
+      "toys_collectibles": [
+        "toys", "ActionFigures", "plushies", "squishmallows",
+        "PokemonTCG", "collectables", "funko", "lego",
+        "LegoMarvel", "LegoTechnic", "LEGOIdeas",
+        "Dolls", "Barbie", "Fidgets", "poppitrade"
+      ],
+
+      "board_games_puzzles": [
+        "boardgames", "Puzzles", "chess", "tabletopgames",
+        "boardgamedeals", "CasualGaming", "Dominion",
+        "rpg", "DnD", "warhammer"
+      ],
+
+      "rc_drones": [
+        "radiocontrol", "RCHelicopter", "drones",
+        "fpv", "multirotors", "RCcars", "diydrones"
+      ],
+
+      "musical_instruments": [
+        "guitar", "piano", "musicinstruments", "singing",
+        "WeAreTheMusicMakers", "Musicians", "drums",
+        "ukulele", "violin", "synthesizerss", "Bass"
+      ],
+
+      "pets_dogs_cats": [
+        "dogs", "cats", "puppy101", "Dogtraining", "catcare",
+        "CatAdvice", "pets", "doggrooming", "catgrooming",
+        "AskVet", "rawpetfood", "PetFood", "DogFoodAdvice",
+        "AutomaticLitter", "CatEnrichment", "DogEnrichment",
+        "CatTraining", "PuppyTraining", "DogCare"
+      ],
+
+      "pets_other": [
+        "Aquariums", "ReefTank", "fishkeeping", "reptiles",
+        "parrots", "budgies", "birds", "Rabbits",
+        "hamsters", "guineapigs", "ferrets"
+      ],
+
+      "automotive_car": [
+        "cars", "AutoDetailing", "MechanicAdvice",
+        "Justrolledintotheshop", "CarTalk", "whatisthiscar",
+        "carcare", "CarAV", "dashcam", "CarPlay",
+        "teslamotors", "electricvehicles", "prius",
+        "lifted_trucks", "projectcar"
+      ],
+
+      "motorcycle": [
+        "motorcycles", "motocamping", "Moto", "supermoto",
+        "sportsbikes", "cruisers", "bikewrench"
+      ],
+
+      "automotive_rv": [
+        "overlanding", "VanLife", "RVliving", "CampingCars",
+        "boating", "sailing", "Yachting"
+      ],
+
+      "tools_hardware": [
+        "Tools", "DIY", "woodworking", "Carpentry",
+        "PowerTools", "HandTools", "ToolAdvice",
+        "workshoporganization", "Plumbing", "electricians",
+        "Welding", "AskElectronics", "electronics",
+        "soldering", "HomeImprovement", "3Dprinting"
+      ],
+
+      "furniture": [
+        "IKEA", "malelivingspace", "femalelivingspace",
+        "furniture", "InteriorDesign", "DesignMyRoom",
+        "midcenturymodern", "Scandinavian", "industrialdesign",
+        "officedesign", "StandingDesk", "OfficeChairs",
+        "patio", "outdoorliving"
+      ],
+
+      "books_reading": [
+        "books", "booksuggestions", "bookclubs", "52book",
+        "printSF", "Fantasy", "sciencefiction", "mystery",
+        "horrorlit", "romantasy", "BookTok",
+        "childrensbooks", "YAlit", "comicbooks", "manga"
+      ],
+
+      "creator_commerce": [
+        "TikTokShop", "Tiktokhelp", "TikTok", "TikTokMarketing",
+        "TikTokMonetizing", "tiktokcreatorclub",
+        "ContentCreators", "UGCcreators", "influencermarketing",
+        "influencer", "socialmedia", "SocialMediaMarketing",
+        "AffiliateMarketing", "ecommerce", "dropshipping",
+        "shopify", "AmazonSeller", "FulfillmentByAmazon",
+        "Flipping", "SideHustle", "livestreaming", "LiveSelling",
+        "PartneredYoutube", "NewTubers", "youtube",
+        "EntrepreneurRideAlong", "EtsySellers", "smallbusiness",
+        "WorkOnline", "beermoney"
+      ],
+
+      "deals_shopping_reviews": [
+        "ProductReviews", "Deals", "Frugal",
+        "shutupandtakemymoney", "DidntKnowIWantedThat",
+        "GoodValue", "Costco", "Target", "Walmart",
+        "ThriftStoreHauls", "BuyItForLife", "amazonfinds",
+        "AmazonProductReviews", "wirecutter",
+        "slickdeals", "FrugalMaleFashion", "FrugalFemaleFashion"
+      ],
+
+      "trend_culture": [
+        "popculturechat", "Fauxmoi", "OutOfTheLoop",
+        "GenZ", "Millennials", "AskWomenOver30",
+        "AskMenOver30", "CasualConversation",
+        "NoStupidQuestions", "changemyview",
+        "internetisbeautiful", "mildlyinteresting"
+      ]
+    }
+  },
+
+  "twitter": {
+    "max_queries": 0,
+    "enabled": false
+  },
+
+  "google_trends": {
+    "enabled": false
+  },
+
+  "public_sources": {
+    "hackernews": {
+      "enabled": false
+    },
+    "rss": {
+      "enabled": false
+    }
+  }
+}

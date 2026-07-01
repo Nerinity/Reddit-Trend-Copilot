@@ -1,0 +1,34 @@
+# Large data files — too big for GitHub
+data/processed/*.parquet
+data/processed/*.npy
+data/processed/embeddings_500k_ids.txt
+data/raw/
+data/state/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Secrets / env
+.env
+*.key
+*.pem
+
+# Streamlit
+.streamlit/secrets.toml

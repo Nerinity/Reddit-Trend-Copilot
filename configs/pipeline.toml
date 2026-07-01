@@ -1,0 +1,22 @@
+[runtime]
+default_mode = "incremental"
+historical_start_date = "2026-04-01"
+historical_end_date = "2026-06-25"
+timezone = "America/Los_Angeles"
+geo = "US"
+
+[storage]
+raw_dir = "data/raw"
+processed_dir = "data/processed"
+snapshot_dir = "data/snapshots"
+state_dir = "data/state"
+dedupe_keys = ["content_hash"]
+
+[scheduling]
+daily_collection_cron_utc = "17 10 * * *"
+weekly_backfill_cron_utc = "37 11 * * 1"
+
+[monitoring]
+min_rows_per_daily_run = 100
+alert_on_empty_source = true
+alert_on_auth_failure = true
