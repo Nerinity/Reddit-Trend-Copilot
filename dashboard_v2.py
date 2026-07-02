@@ -20,7 +20,8 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-DATA_PATH = Path(__file__).parent / "data" / "processed" / "dashboard_data_500k.pkl"
+DATA_PATH     = Path(__file__).parent / "data" / "processed" / "dashboard_data_500k.pkl"
+FORECAST_PATH = Path(__file__).parent / "data" / "processed" / "forecast_data.pkl"
 
 COLORS = {
     "rising":   "#22C55E",
@@ -119,10 +120,11 @@ def cat_label(c: str) -> str:
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 1 — 趋势品类目
 # ════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     "📊 趋势品类目 / Trends",
     "🚀 飙升榜 / Spike Board",
     "🔍 品类详情 / Category Detail",
+    "🔮 预测 / Forecast",
 ])
 
 with tab1:
@@ -477,3 +479,139 @@ with tab3:
               <span style="font-size:.72rem;color:#6B7280;margin-left:10px">互动 {int(score):,}</span>
               <span style="font-size:.72rem;color:{sent_color};margin-left:10px">{sent_txt}</span>
             </div>""", unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════════════════════
+# TAB 4 — 预测 / Forecast
+# ════════════════════════════════════════════════════════════════════════════
+with tab4:
+    st.markdown('<div class="chart-caption">📌 <b>预测说明</b>：左侧 XGBoost 模型基于近6个月的周度提及量、情绪、社区扩散等特征，预测各品类在未来2-4周继续上涨的概率。右侧 Prophet 时序模型展示历史走势 + 未来4周预测区间（灰色阴影）。<br>Left: XGBoost rising probability for next 2–4 weeks. Right: Prophet trend + 4-week forecast (shaded = confidence interval).</div>', unsafe_allow_html=True)
+    st.markdown("")
+
+    if not FORECAST_PATH.exists():
+        st.warning("预测数据未生成。请先运行 `python scripts/build_forecast.py`。")
+    else:
+        @st.cache_data
+        def load_forecast():
+            with open(FORECAST_PATH, "rb") as f:
+                return pickle.load(f)
+
+        fdata        = load_forecast()
+        xgb_preds    = fdata["xgb_predictions"]        # DataFrame: category, p2, p4, rise_prob
+        prophet_fcs  = fdata["prophet_forecasts"]       # dict: category → DataFrame
+        weekly_data  = fdata["weekly"]                  # DataFrame: category, week, mentions, …
+
+        f_col, p_col = st.columns([3, 5])
+
+        # ── Left: rising / declining category lists ───────────────────────────
+        with f_col:
+            st.markdown("#### 预测结果 / Predictions")
+            tab_2w, tab_4w = st.tabs(["未来2周 / Next 2W", "未来4周 / Next 4W"])
+
+            def render_prediction_list(prob_col: str) -> None:
+                rising_cats   = xgb_preds[xgb_preds[prob_col] >= 0.90]["category"].tolist()
+                declining_cats = xgb_preds[xgb_preds[prob_col] <= 0.10]["category"].tolist()
+
+                st.markdown("**🟢 预计上涨 / Likely Rising**")
+                if rising_cats:
+                    items = "".join(
+                        f'<div style="padding:5px 10px;margin:3px 0;background:#F0FDF4;'
+                        f'border-left:3px solid {COLORS["rising"]};border-radius:4px;'
+                        f'font-size:.85rem;color:#111">{cat_label(c)}</div>'
+                        for c in rising_cats
+                    )
+                    st.markdown(items, unsafe_allow_html=True)
+                else:
+                    st.caption("无高置信度上涨品类 / None above threshold")
+
+                st.markdown("")
+                st.markdown("**🔴 预计下行 / Likely Declining**")
+                if declining_cats:
+                    items = "".join(
+                        f'<div style="padding:5px 10px;margin:3px 0;background:#FFF1F2;'
+                        f'border-left:3px solid {COLORS["declining"]};border-radius:4px;'
+                        f'font-size:.85rem;color:#111">{cat_label(c)}</div>'
+                        for c in declining_cats
+                    )
+                    st.markdown(items, unsafe_allow_html=True)
+                else:
+                    st.caption("无高置信度下行品类 / None below threshold")
+
+            with tab_2w:
+                render_prediction_list("p2")
+            with tab_4w:
+                render_prediction_list("p4")
+
+        # ── Right: Prophet trend chart ────────────────────────────────────────
+        with p_col:
+            st.markdown("#### Prophet 趋势预测 / Trend Forecast")
+            prophet_cats = [c for c in xgb_preds["category"].tolist() if c in prophet_fcs]
+            selected_fc  = st.selectbox(
+                "选择品类 / Select Category",
+                options=prophet_cats,
+                format_func=cat_label,
+                key="fc_cat",
+            )
+
+            if selected_fc and selected_fc in prophet_fcs:
+                fc   = prophet_fcs[selected_fc].copy()
+                fc["ds"] = pd.to_datetime(fc["ds"])
+                hist = fc[fc["actual"].notna()].copy()
+                pred = fc.tail(4).copy()  # last 4 rows = forecast weeks
+
+                fig_p = go.Figure()
+
+                # Confidence interval (full series)
+                fig_p.add_trace(go.Scatter(
+                    x=pd.concat([fc["ds"], fc["ds"][::-1]]),
+                    y=pd.concat([fc["yhat_upper"], fc["yhat_lower"][::-1]]),
+                    fill="toself",
+                    fillcolor="rgba(37,99,235,0.10)",
+                    line=dict(color="rgba(0,0,0,0)"),
+                    hoverinfo="skip",
+                    name="预测区间",
+                ))
+
+                # Prophet fitted line
+                fig_p.add_trace(go.Scatter(
+                    x=fc["ds"], y=fc["yhat"],
+                    mode="lines",
+                    line=dict(color=COLORS["primary"], width=2, dash="dot"),
+                    name="Prophet 拟合/预测",
+                ))
+
+                # Actual historical points
+                fig_p.add_trace(go.Scatter(
+                    x=hist["ds"], y=hist["actual"],
+                    mode="lines+markers",
+                    line=dict(color="#111827", width=2),
+                    marker=dict(size=5, color="#111827"),
+                    name="实际提及量 Actual",
+                ))
+
+                # Forecast period shading
+                if not pred.empty:
+                    fig_p.add_vrect(
+                        x0=pred["ds"].iloc[0], x1=pred["ds"].iloc[-1],
+                        fillcolor="rgba(34,197,94,0.07)",
+                        layer="below", line_width=0,
+                        annotation_text="预测区间", annotation_position="top left",
+                        annotation_font_size=10, annotation_font_color="#22C55E",
+                    )
+
+                # Reference line: spike = 1.0 means no change vs prior week
+                fig_p.add_hline(y=1.0, line_dash="dash", line_color="#94A3B8",
+                                line_width=1, annotation_text="持平 flat",
+                                annotation_font_size=9, annotation_font_color="#94A3B8")
+
+                fig_p.update_layout(
+                    height=460,
+                    xaxis=dict(title="周 / Week", showgrid=True, gridcolor="#F3F4F6"),
+                    yaxis=dict(title="周环比增长倍数 / Weekly Spike (1.0 = flat)", showgrid=True, gridcolor="#F3F4F6"),
+                    plot_bgcolor="white", paper_bgcolor="white",
+                    margin=dict(l=10, r=20, t=30, b=30),
+                    legend=dict(orientation="h", y=-0.12, font=dict(size=10)),
+                    hovermode="x unified",
+                )
+                st.plotly_chart(fig_p, use_container_width=True)
+            else:
+                st.info("该品类暂无 Prophet 预测数据。")
