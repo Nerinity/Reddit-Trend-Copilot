@@ -224,17 +224,23 @@ with tab1:
 # ════════════════════════════════════════════════════════════════════════════
 with tab2:
     st.markdown('<div class="chart-caption">📌 <b>飙升榜 Spike Board</b>：仅按近两周热度增长倍数排序，找最近爆发最快的品类。卡片内 Bar 长度 = 该品牌在本品类的近两周提及量。<br>Ranked by 2-week spike only (not overall trend score). Bar length = brand mention count in current period.</div>', unsafe_allow_html=True)
+
+    t2c1, t2c2 = st.columns(2)
+    with t2c1:
+        t2_n_cats = st.slider("展示品类数 / Show N categories", 4, 20, 6, 2, key="t2_n_cats")
+    with t2c2:
+        t2_n_brands = st.slider("每图展示品牌数 / Brands per card", 3, 30, 5, 1, key="t2_n_brands")
     st.markdown("")
 
-    top6 = stats_all.nlargest(6,"normalized_spike").copy()
+    top_cats = stats_all.nlargest(t2_n_cats, "normalized_spike").copy()
 
-    for i in range(0, 6, 2):
+    for i in range(0, t2_n_cats, 2):
         col_a, col_b = st.columns(2)
         for j, col in enumerate([col_a, col_b]):
             idx = i + j
-            if idx >= len(top6): break
-            row = top6.iloc[idx]
-            cat = row["category"]
+            if idx >= len(top_cats): break
+            row = top_cats.iloc[idx]
+            cat    = row["category"]
             dcolor = COLORS[row["trend_direction"]]
             dlabel = f"{DIR_EMO[row['trend_direction']]} {DIR_ZH[row['trend_direction']]} · {DIR_EN[row['trend_direction']]}"
             delta_sign = "+" if row["mentions_delta"]>=0 else ""
@@ -276,7 +282,7 @@ with tab2:
 
                     # Brand bar chart
                     if not bdf.empty:
-                        bdf_show = bdf.head(10).copy()
+                        bdf_show = bdf.head(t2_n_brands).copy()
                         bdf_show["brand_short"] = bdf_show["brand"].str[:20]
                         fig_b = go.Figure(go.Bar(
                             x=bdf_show["cur_mentions"],
@@ -307,13 +313,16 @@ with tab2:
 # TAB 3 — 品类详情
 # ════════════════════════════════════════════════════════════════════════════
 with tab3:
-    default_cat = stats_all.iloc[0]["category"]
-    selected = st.selectbox(
-        "选择品类 / Select Category",
-        options=stats_all["category"].tolist(),
-        index=0,
-        format_func=cat_label,
-    )
+    t3c1, t3c2 = st.columns([3, 1])
+    with t3c1:
+        selected = st.selectbox(
+            "选择品类 / Select Category",
+            options=stats_all["category"].tolist(),
+            index=0,
+            format_func=cat_label,
+        )
+    with t3c2:
+        t3_n = st.slider("展示品牌数 / Show N brands", 3, 30, 5, 1, key="t3_n")
 
     row = stats_all[stats_all["category"]==selected].iloc[0]
 
@@ -346,20 +355,33 @@ with tab3:
     bdf = cat_brand_data.get(selected, pd.DataFrame())
 
     with b_col:
-        st.markdown('<div class="chart-caption">📌 <b>品牌提及量 Brand Mentions</b>：条形长度 = 近两周提及帖子数；<span style="color:#22C55E">绿色</span> = 好感度正向，<span style="color:#94A3B8">灰色</span> = 中性，<span style="color:#EF4444">红色</span> = 负向。<br>Bar length = current-period posts. Color = average post sentiment for each brand.</div>', unsafe_allow_html=True)
-        if not bdf.empty:
-            bdf_show = bdf.head(15).copy()
-            bdf_show["bar_color"] = bdf_show["avg_sentiment"].apply(
-                lambda s: COLORS["rising"] if s >= 0.05 else (
-                    COLORS["declining"] if s <= -0.05 else COLORS["stable"]))
+        st.markdown('<div class="chart-caption">📌 <b>品牌提及量 Brand Mentions</b>：条形长度 = 近两周提及帖子数；条形颜色 = 该品牌帖子平均好感度（连续色阶，红→黄→绿，范围 −1 到 +1）。<br>Bar length = current-period posts. Color = avg sentiment per brand (continuous RdYlGn scale, −1 to +1).</div>', unsafe_allow_html=True)
+        bdf_filtered = bdf.head(t3_n) if not bdf.empty else bdf
+        if not bdf_filtered.empty:
+            bdf_show = bdf_filtered.copy()
             bdf_show["brand_short"] = bdf_show["brand"].str[:22]
-            bdf_show["b_spike"] = (bdf_show["cur_mentions"] / bdf_show["prev_mentions"].replace(0,1)).round(2)
+            bdf_show["b_spike"] = (bdf_show["cur_mentions"] / bdf_show["prev_mentions"].replace(0, 1)).round(2)
 
             fig_brands = go.Figure(go.Bar(
                 x=bdf_show["cur_mentions"],
                 y=bdf_show["brand_short"],
                 orientation="h",
-                marker_color=bdf_show["bar_color"],
+                marker=dict(
+                    color=bdf_show["avg_sentiment"],
+                    colorscale="RdYlGn",
+                    cmin=-1,
+                    cmax=1,
+                    showscale=True,
+                    colorbar=dict(
+                        title=dict(text="好感度<br>Sentiment", side="right", font=dict(size=11)),
+                        thickness=14,
+                        len=0.85,
+                        tickvals=[-1, -0.5, 0, 0.5, 1],
+                        ticktext=["-1<br>负面", "-0.5", "0<br>中性", "0.5", "+1<br>正面"],
+                        tickfont=dict(size=9),
+                        outlinewidth=0,
+                    ),
+                ),
                 hovertemplate=(
                     "<b>%{y}</b><br>"
                     "当前提及 Current: %{x:,}<br>"
@@ -367,14 +389,14 @@ with tab3:
                     "好感度 Sentiment: %{customdata[1]:+.2f}<br>"
                     "增长倍数 Spike: %{customdata[2]:.1f}x<extra></extra>"
                 ),
-                customdata=bdf_show[["prev_mentions","avg_sentiment","b_spike"]].values,
+                customdata=bdf_show[["prev_mentions", "avg_sentiment", "b_spike"]].values,
             ))
             fig_brands.update_layout(
-                height=460,
+                height=max(260, t3_n * 46),
                 yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10)),
                 xaxis=dict(title="近两周提及量 / Current Mentions", showgrid=True, gridcolor="#F3F4F6"),
                 plot_bgcolor="white", paper_bgcolor="white",
-                margin=dict(l=10, r=30, t=10, b=30),
+                margin=dict(l=10, r=80, t=10, b=30),
                 showlegend=False,
             )
             st.plotly_chart(fig_brands, use_container_width=True)
@@ -382,43 +404,56 @@ with tab3:
             st.info("该品类暂无识别到的品牌数据。/ No brand data identified for this category.")
 
     with w_col:
-        st.markdown('<div class="chart-caption">📌 <b>品牌环比增量 Period-over-Period Delta</b>：条形长度 = 本期 vs 上期提及量增减；数值为具体增减帖子数。<br>Bar = mentions gained/lost vs prior period. Positive = growing, negative = declining.</div>', unsafe_allow_html=True)
-        if not bdf.empty:
-            bdf_delta = bdf.head(15).copy()
-            bdf_delta["delta"] = (bdf_delta["cur_mentions"] - bdf_delta["prev_mentions"]).astype(int)
-            bdf_delta = bdf_delta.sort_values("delta", ascending=True)
-            bdf_delta["brand_short"] = bdf_delta["brand"].str[:20]
-            bdf_delta["bar_color"] = bdf_delta["delta"].apply(
-                lambda d: COLORS["rising"] if d > 0 else COLORS["declining"])
-            bdf_delta["delta_txt"] = bdf_delta["delta"].apply(
-                lambda d: f"+{d:,}" if d >= 0 else f"{d:,}")
+        st.markdown('<div class="chart-caption">📌 <b>品牌数据矩阵 Brand Matrix</b>：本期提及量、环比增减、平均好感度。<br>Current mentions, period-over-period delta, and avg sentiment per brand.</div>', unsafe_allow_html=True)
+        if not bdf_filtered.empty:
+            bdf_matrix = bdf_filtered.copy()
+            bdf_matrix["delta"] = (bdf_matrix["cur_mentions"] - bdf_matrix["prev_mentions"]).astype(int)
 
-            fig_delta = go.Figure(go.Bar(
-                x=bdf_delta["delta"],
-                y=bdf_delta["brand_short"],
-                orientation="h",
-                marker_color=bdf_delta["bar_color"],
-                text=bdf_delta["delta_txt"],
-                textposition="outside",
-                textfont=dict(size=9),
-                hovertemplate=(
-                    "<b>%{y}</b><br>"
-                    "环比增减 Delta: %{x:,}<br>"
-                    "当前 Current: %{customdata[0]:,}<br>"
-                    "上期 Prior: %{customdata[1]:,}<extra></extra>"
-                ),
-                customdata=bdf_delta[["cur_mentions","prev_mentions"]].values,
-            ))
-            fig_delta.add_vline(x=0, line_color="#CBD5E1", line_width=1)
-            fig_delta.update_layout(
-                height=460,
-                yaxis=dict(tickfont=dict(size=10)),
-                xaxis=dict(title="环比增减量 / Delta vs Prior Period", showgrid=True, gridcolor="#F3F4F6"),
-                plot_bgcolor="white", paper_bgcolor="white",
-                margin=dict(l=10, r=55, t=10, b=30),
-                showlegend=False,
-            )
-            st.plotly_chart(fig_delta, use_container_width=True)
+            def fmt_delta(d):
+                color = "#22C55E" if d > 0 else ("#EF4444" if d < 0 else "#94A3B8")
+                sign  = "+" if d > 0 else ""
+                return f'<span style="color:{color};font-weight:600">{sign}{d:,}</span>'
+
+            def fmt_sent(s):
+                if s >= 0.05:   color, label = "#22C55E", f"+{s:.2f}"
+                elif s <= -0.05: color, label = "#EF4444", f"{s:.2f}"
+                else:            color, label = "#94A3B8", f"{s:.2f}"
+                return f'<span style="color:{color};font-weight:600">{label}</span>'
+
+            rows_html = ""
+            for _, r in bdf_matrix.iterrows():
+                rows_html += f"""
+                <tr>
+                  <td style="font-weight:500;max-width:110px;overflow:hidden;
+                              text-overflow:ellipsis;white-space:nowrap">{r['brand']}</td>
+                  <td style="text-align:right">{int(r['cur_mentions']):,}</td>
+                  <td style="text-align:right">{int(r['prev_mentions']):,}</td>
+                  <td style="text-align:right">{fmt_delta(r['delta'])}</td>
+                  <td style="text-align:right">{fmt_sent(r['avg_sentiment'])}</td>
+                </tr>"""
+
+            st.markdown(f"""
+            <style>
+            .brand-matrix table{{width:100%;border-collapse:collapse;font-size:.82rem;}}
+            .brand-matrix th{{background:#F8FAFC;padding:7px 10px;text-align:right;
+              font-weight:600;color:#374151;font-size:.75rem;border-bottom:2px solid #E5E7EB;}}
+            .brand-matrix th:first-child{{text-align:left;}}
+            .brand-matrix td{{padding:6px 10px;border-bottom:1px solid #F3F4F6;color:#111;}}
+            .brand-matrix tr:last-child td{{border-bottom:none;}}
+            .brand-matrix tr:hover td{{background:#F9FAFB;}}
+            </style>
+            <div class="brand-matrix">
+            <table>
+              <thead><tr>
+                <th style="text-align:left">品牌 Brand</th>
+                <th>本期 Cur</th>
+                <th>上期 Prev</th>
+                <th>环比 Delta</th>
+                <th>好感度 Sent</th>
+              </tr></thead>
+              <tbody>{rows_html}</tbody>
+            </table>
+            </div>""", unsafe_allow_html=True)
         else:
             st.info("暂无数据 / No data")
 
