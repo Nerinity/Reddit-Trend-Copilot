@@ -22,6 +22,36 @@ st.set_page_config(
 
 DATA_PATH     = Path(__file__).parent / "data" / "processed" / "dashboard_data_500k.pkl"
 FORECAST_PATH = Path(__file__).parent / "data" / "processed" / "forecast_data.pkl"
+PARQUET_PATH  = Path(__file__).parent / "data" / "processed" / "nlp_clustered_500k.parquet"
+
+# ── US Holidays & TikTok Shop events (data range: 2025-12-29 ~ 2026-06-28) ──
+US_HOLIDAYS = {
+    "2025-12-25": "🎄 Christmas",
+    "2026-01-01": "🎆 New Year's Day",
+    "2026-01-19": "MLK Day",
+    "2026-02-14": "💝 Valentine's Day",
+    "2026-02-16": "President's Day",
+    "2026-03-08": "Women's Day",
+    "2026-03-17": "St. Patrick's Day",
+    "2026-04-05": "🐣 Easter",
+    "2026-05-10": "💐 Mother's Day",
+    "2026-05-25": "Memorial Day",
+    "2026-06-19": "Juneteenth",
+    "2026-06-21": "👨 Father's Day",
+}
+
+TIKTOK_EVENTS = [
+    # (start, end, label)  — end=None for single-day marker
+    ("2025-12-25", "2025-12-31", "🛍 Holiday Sale"),
+    ("2026-01-01", "2026-01-07", "🛒 New Year Sale"),
+    ("2026-01-20", "2026-01-25", "📅 DFYD Jan"),       # Deals For You Days, quarterly
+    ("2026-02-10", "2026-02-14", "💝 Valentine Sale"),
+    ("2026-03-01", "2026-03-15", "🌸 Spring Sale"),
+    ("2026-04-06", "2026-04-13", "📅 DFYD Apr"),
+    ("2026-05-04", "2026-05-11", "💐 Mother's Day Sale"),
+    ("2026-05-25", "2026-05-31", "☀️ Summer Kickoff"),
+    ("2026-06-15", "2026-06-22", "☀️ Summer Sale"),
+]
 
 COLORS = {
     "rising":   "#22C55E",
@@ -61,6 +91,18 @@ div[data-testid="metric-container"] label{font-size:.75rem;color:#6B7280;}
 def load_data():
     with open(DATA_PATH, "rb") as f:
         return pickle.load(f)
+
+@st.cache_data
+def load_posts_df():
+    """Load minimal post columns from parquet for brand-level post search.
+    Returns None if parquet not available (e.g., cloud deployment)."""
+    if not PARQUET_PATH.exists():
+        return None
+    cols = ["category", "title", "ner_input", "url", "community",
+            "engagement_score", "sentiment_label", "published_at"]
+    df = pd.read_parquet(PARQUET_PATH, columns=cols)
+    df["published_at"] = pd.to_datetime(df["published_at"], utc=True, errors="coerce")
+    return df
 
 all_data     = load_data()
 win_labels   = all_data["window_labels"]
@@ -234,7 +276,7 @@ with tab2:
         t2_n_brands = st.slider("每图展示品牌数 / Brands per card", 3, 30, 5, 1, key="t2_n_brands")
     st.markdown("")
 
-    top_cats = stats_all.nlargest(t2_n_cats, "normalized_spike").copy()
+    top_cats = stats_all.nlargest(t2_n_cats, "spike_ratio").copy()
 
     for i in range(0, t2_n_cats, 2):
         col_a, col_b = st.columns(2)
@@ -315,13 +357,24 @@ with tab2:
 # TAB 3 — 品类详情
 # ════════════════════════════════════════════════════════════════════════════
 with tab3:
+    # Build direction arrow map for all categories
+    DIR_ARROW = {"rising": "🟢 ↑", "stable": "⚫ →", "declining": "🔴 ↓"}
+    _dir_map  = dict(zip(stats_all["category"], stats_all["trend_direction"]))
+
+    def cat_label_arrow(cat: str) -> str:
+        arrow = DIR_ARROW.get(_dir_map.get(cat, "stable"), "⚫ →")
+        return f"{cat_label(cat)}  {arrow}"
+
+    # All categories sorted A-Z
+    all_cats_sorted = sorted(stats_all["category"].tolist(), key=lambda c: cat_label(c).lower())
+
     t3c1, t3c2 = st.columns([3, 1])
     with t3c1:
         selected = st.selectbox(
-            "选择品类 / Select Category",
-            options=stats_all["category"].tolist(),
+            "选择品类 / Select Category （可输入搜索）",
+            options=all_cats_sorted,
             index=0,
-            format_func=cat_label,
+            format_func=cat_label_arrow,
         )
     with t3c2:
         t3_n = st.slider("展示品牌数 / Show N brands", 3, 30, 5, 1, key="t3_n")
@@ -459,26 +512,75 @@ with tab3:
         else:
             st.info("暂无数据 / No data")
 
-    # Sample posts below
-    posts = row["sample_posts"] if isinstance(row.get("sample_posts"), list) else []
-    if posts:
-        st.markdown("**近期高互动帖子 / Top Posts**")
-        st.markdown('<div class="chart-caption">近两周互动分最高的帖子，反映该品类讨论热点。/ Top posts by engagement score in current period.</div>', unsafe_allow_html=True)
-        for p in posts[:4]:
-            title = str(p.get("title", ""))[:90]
-            comm  = p.get("community", "")
-            score = p.get("engagement_score", 0)
-            label = p.get("sentiment_label", "")
-            sent_color = COLORS["rising"] if label=="positive" else (
-                COLORS["declining"] if label=="negative" else COLORS["stable"])
-            sent_txt = {"positive":"😊 正面","negative":"😟 负面","neutral":"😐 中性"}.get(label, "")
-            st.markdown(f"""
-            <div style="padding:6px 0;border-bottom:1px solid #F3F4F6">
-              <div style="font-size:.84rem;color:#111;margin-bottom:2px">{title}</div>
+    # ── Posts section ────────────────────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("**📄 近期热帖 / Top Posts**")
+
+    pa_col, pb_col = st.columns([2, 1])
+    with pa_col:
+        brand_options = ["全部品牌 / All Brands"] + (
+            bdf_filtered["brand"].tolist() if not bdf_filtered.empty else []
+        )
+        brand_filter = st.selectbox(
+            "按品牌筛选帖子 / Filter by Brand",
+            options=brand_options,
+            key="t3_brand_filter",
+        )
+    with pb_col:
+        t3_post_n = st.slider("展示帖子数 / Show N posts", 5, 30, 10, 5, key="t3_post_n")
+
+    # Load posts from parquet (cached); falls back to sample_posts if parquet unavailable
+    posts_df = load_posts_df()
+    if posts_df is None:
+        # Cloud mode: build a minimal DataFrame from pre-computed sample_posts
+        sample = row["sample_posts"] if isinstance(row.get("sample_posts"), list) else []
+        if sample:
+            cat_posts = pd.DataFrame(sample)
+            cat_posts["ner_input"] = cat_posts["title"]
+            cat_posts["published_at"] = pd.NaT
+        else:
+            cat_posts = pd.DataFrame()
+        if not cat_posts.empty and brand_filter != "全部品牌 / All Brands":
+            pat = brand_filter.replace("(", r"\(").replace(")", r"\)")
+            cat_posts = cat_posts[cat_posts["title"].str.contains(pat, case=False, na=False)]
+        st.caption("⚠️ 完整帖子库未加载（云端部署），仅展示预计算样本帖。")
+    else:
+        cat_posts = posts_df[posts_df["category"] == selected].copy()
+        if brand_filter != "全部品牌 / All Brands":
+            pat = brand_filter.replace("(", r"\(").replace(")", r"\)")
+            cat_posts = cat_posts[
+                cat_posts["ner_input"].str.contains(pat, case=False, na=False) |
+                cat_posts["title"].str.contains(pat, case=False, na=False)
+            ]
+
+    cat_posts = cat_posts.sort_values("engagement_score", ascending=False).head(t3_post_n)
+
+    if cat_posts.empty:
+        st.info("该筛选条件下暂无帖子 / No posts found for this filter.")
+    else:
+        sent_color_map = {"positive": COLORS["rising"], "negative": COLORS["declining"], "neutral": COLORS["stable"]}
+        sent_txt_map   = {"positive": "😊 正面", "negative": "😟 负面", "neutral": "😐 中性"}
+        html_rows = ""
+        for _, p in cat_posts.iterrows():
+            title      = str(p.get("title", ""))[:120]
+            comm       = p.get("community", "")
+            score      = p.get("engagement_score", 0)
+            label      = p.get("sentiment_label", "neutral")
+            url        = p.get("url", "")
+            date_str   = p["published_at"].strftime("%m/%d") if pd.notna(p.get("published_at")) else ""
+            sc         = sent_color_map.get(label, COLORS["stable"])
+            st_txt     = sent_txt_map.get(label, "")
+            link       = f'<a href="{url}" target="_blank" style="color:#111;text-decoration:none">{title}</a>' if url else title
+            html_rows += f"""
+            <div style="padding:8px 0;border-bottom:1px solid #F3F4F6">
+              <div style="font-size:.85rem;margin-bottom:3px;line-height:1.4">{link} <span style="font-size:.7rem;color:#2563EB">↗</span></div>
               <span style="font-size:.72rem;color:#6B7280">r/{comm}</span>
+              <span style="font-size:.72rem;color:#6B7280;margin-left:10px">📅 {date_str}</span>
               <span style="font-size:.72rem;color:#6B7280;margin-left:10px">互动 {int(score):,}</span>
-              <span style="font-size:.72rem;color:{sent_color};margin-left:10px">{sent_txt}</span>
-            </div>""", unsafe_allow_html=True)
+              <span style="font-size:.72rem;color:{sc};margin-left:10px">{st_txt}</span>
+            </div>"""
+        st.markdown(f'<div style="max-height:520px;overflow-y:auto">{html_rows}</div>',
+                    unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # TAB 4 — 预测 / Forecast
@@ -500,17 +602,15 @@ with tab4:
         prophet_fcs  = fdata["prophet_forecasts"]       # dict: category → DataFrame
         weekly_data  = fdata["weekly"]                  # DataFrame: category, week, mentions, …
 
-        f_col, p_col = st.columns([3, 5])
+        # ── Top: rising / declining category lists (two columns) ────────────────
+        st.markdown("#### 预测结果 / Predictions")
+        tab_2w, tab_4w = st.tabs(["未来2周 / Next 2W", "未来4周 / Next 4W"])
 
-        # ── Left: rising / declining category lists ───────────────────────────
-        with f_col:
-            st.markdown("#### 预测结果 / Predictions")
-            tab_2w, tab_4w = st.tabs(["未来2周 / Next 2W", "未来4周 / Next 4W"])
-
-            def render_prediction_list(prob_col: str) -> None:
-                rising_cats   = xgb_preds[xgb_preds[prob_col] >= 0.90]["category"].tolist()
-                declining_cats = xgb_preds[xgb_preds[prob_col] <= 0.10]["category"].tolist()
-
+        def render_prediction_list(prob_col: str) -> None:
+            rising_cats    = xgb_preds[xgb_preds[prob_col] >= 0.90]["category"].tolist()
+            declining_cats = xgb_preds[xgb_preds[prob_col] <= 0.10]["category"].tolist()
+            rc1, rc2 = st.columns(2)
+            with rc1:
                 st.markdown("**🟢 预计上涨 / Likely Rising**")
                 if rising_cats:
                     items = "".join(
@@ -522,8 +622,7 @@ with tab4:
                     st.markdown(items, unsafe_allow_html=True)
                 else:
                     st.caption("无高置信度上涨品类 / None above threshold")
-
-                st.markdown("")
+            with rc2:
                 st.markdown("**🔴 预计下行 / Likely Declining**")
                 if declining_cats:
                     items = "".join(
@@ -536,82 +635,131 @@ with tab4:
                 else:
                     st.caption("无高置信度下行品类 / None below threshold")
 
-            with tab_2w:
-                render_prediction_list("p2")
-            with tab_4w:
-                render_prediction_list("p4")
+        with tab_2w:
+            render_prediction_list("p2")
+        with tab_4w:
+            render_prediction_list("p4")
 
-        # ── Right: Prophet trend chart ────────────────────────────────────────
-        with p_col:
-            st.markdown("#### Prophet 趋势预测 / Trend Forecast")
-            prophet_cats = [c for c in xgb_preds["category"].tolist() if c in prophet_fcs]
-            selected_fc  = st.selectbox(
-                "选择品类 / Select Category",
-                options=prophet_cats,
-                format_func=cat_label,
-                key="fc_cat",
-            )
+        # ── Bottom: Prophet trend chart (full width) ──────────────────────────
+        st.markdown("---")
+        st.markdown("#### Prophet 趋势预测 / Trend Forecast")
+        prophet_cats = [c for c in xgb_preds["category"].tolist() if c in prophet_fcs]
+        selected_fc  = st.selectbox(
+            "选择品类 / Select Category",
+            options=prophet_cats,
+            format_func=cat_label,
+            key="fc_cat",
+        )
 
-            if selected_fc and selected_fc in prophet_fcs:
-                fc   = prophet_fcs[selected_fc].copy()
-                fc["ds"] = pd.to_datetime(fc["ds"])
-                hist = fc[fc["actual"].notna()].copy()
-                pred = fc.tail(4).copy()  # last 4 rows = forecast weeks
+        if selected_fc and selected_fc in prophet_fcs:
+            fc   = prophet_fcs[selected_fc].copy()
+            fc["ds"] = pd.to_datetime(fc["ds"])
+            hist = fc[fc["actual"].notna()].copy()
+            pred = fc.tail(4).copy()
 
-                fig_p = go.Figure()
+            fig_p = go.Figure()
 
-                # Confidence interval (full series)
-                fig_p.add_trace(go.Scatter(
-                    x=pd.concat([fc["ds"], fc["ds"][::-1]]),
-                    y=pd.concat([fc["yhat_upper"], fc["yhat_lower"][::-1]]),
-                    fill="toself",
-                    fillcolor="rgba(37,99,235,0.10)",
-                    line=dict(color="rgba(0,0,0,0)"),
-                    hoverinfo="skip",
-                    name="预测区间",
-                ))
+            # Confidence interval band
+            fig_p.add_trace(go.Scatter(
+                x=pd.concat([fc["ds"], fc["ds"][::-1]]),
+                y=pd.concat([fc["yhat_upper"], fc["yhat_lower"][::-1]]),
+                fill="toself",
+                fillcolor="rgba(37,99,235,0.10)",
+                line=dict(color="rgba(0,0,0,0)"),
+                hoverinfo="skip",
+                name="预测区间",
+            ))
 
-                # Prophet fitted line
-                fig_p.add_trace(go.Scatter(
-                    x=fc["ds"], y=fc["yhat"],
-                    mode="lines",
-                    line=dict(color=COLORS["primary"], width=2, dash="dot"),
-                    name="Prophet 拟合/预测",
-                ))
+            # Prophet fitted / forecast line
+            fig_p.add_trace(go.Scatter(
+                x=fc["ds"], y=fc["yhat"],
+                mode="lines",
+                line=dict(color=COLORS["primary"], width=2, dash="dot"),
+                name="Prophet 拟合/预测",
+            ))
 
-                # Actual historical points
-                fig_p.add_trace(go.Scatter(
-                    x=hist["ds"], y=hist["actual"],
-                    mode="lines+markers",
-                    line=dict(color="#111827", width=2),
-                    marker=dict(size=5, color="#111827"),
-                    name="实际提及量 Actual",
-                ))
+            # Actual historical points
+            fig_p.add_trace(go.Scatter(
+                x=hist["ds"], y=hist["actual"],
+                mode="lines+markers",
+                line=dict(color="#111827", width=2),
+                marker=dict(size=5, color="#111827"),
+                name="实际提及量 Actual",
+            ))
 
-                # Forecast period shading
-                if not pred.empty:
-                    fig_p.add_vrect(
-                        x0=pred["ds"].iloc[0], x1=pred["ds"].iloc[-1],
-                        fillcolor="rgba(34,197,94,0.07)",
-                        layer="below", line_width=0,
-                        annotation_text="预测区间", annotation_position="top left",
-                        annotation_font_size=10, annotation_font_color="#22C55E",
-                    )
-
-                # Reference line: spike = 1.0 means no change vs prior week
-                fig_p.add_hline(y=1.0, line_dash="dash", line_color="#94A3B8",
-                                line_width=1, annotation_text="持平 flat",
-                                annotation_font_size=9, annotation_font_color="#94A3B8")
-
-                fig_p.update_layout(
-                    height=460,
-                    xaxis=dict(title="周 / Week", showgrid=True, gridcolor="#F3F4F6"),
-                    yaxis=dict(title="周环比增长倍数 / Weekly Spike (1.0 = flat)", showgrid=True, gridcolor="#F3F4F6"),
-                    plot_bgcolor="white", paper_bgcolor="white",
-                    margin=dict(l=10, r=20, t=30, b=30),
-                    legend=dict(orientation="h", y=-0.12, font=dict(size=10)),
-                    hovermode="x unified",
+            # Forecast window shading
+            if not pred.empty:
+                fig_p.add_vrect(
+                    x0=pred["ds"].iloc[0], x1=pred["ds"].iloc[-1],
+                    fillcolor="rgba(34,197,94,0.07)",
+                    layer="below", line_width=0,
+                    annotation_text="预测区间", annotation_position="top left",
+                    annotation_font_size=10, annotation_font_color="#22C55E",
                 )
-                st.plotly_chart(fig_p, use_container_width=True)
-            else:
-                st.info("该品类暂无 Prophet 预测数据。")
+
+            # Flat reference line
+            fig_p.add_hline(y=1.0, line_dash="dash", line_color="#94A3B8",
+                            line_width=1, annotation_text="持平 flat",
+                            annotation_font_size=9, annotation_font_color="#94A3B8")
+
+            # ── TikTok Shop campaigns (orange bands, label at bottom) ─────────
+            x_min = fc["ds"].min()
+            x_max = fc["ds"].max()
+            for ts, te, tlabel in TIKTOK_EVENTS:
+                ts_dt = pd.Timestamp(ts)
+                te_dt = pd.Timestamp(te)
+                if te_dt < x_min or ts_dt > x_max:
+                    continue
+                fig_p.add_vrect(
+                    x0=ts_dt, x1=te_dt,
+                    fillcolor="rgba(249,115,22,0.12)",
+                    layer="below", line_width=0,
+                    annotation_text=tlabel, annotation_position="bottom left",
+                    annotation_font_size=8, annotation_font_color="#EA580C",
+                )
+
+            # ── US Holidays (purple dashed lines, staggered yshift) ───────────
+            visible_holidays = [
+                (pd.Timestamp(hdate), hlabel)
+                for hdate, hlabel in US_HOLIDAYS.items()
+                if x_min <= pd.Timestamp(hdate) <= x_max
+            ]
+            # Stagger vertically: 3 tiers so adjacent labels don't overlap
+            YSHIFTS = [0, -18, -36]
+            for i, (hdt, hlabel) in enumerate(visible_holidays):
+                fig_p.add_vline(
+                    x=hdt.timestamp() * 1000,
+                    line_dash="dot", line_color="#A78BFA", line_width=1.2,
+                    annotation=dict(
+                        text=hlabel,
+                        font=dict(size=8, color="#7C3AED"),
+                        bgcolor="rgba(255,255,255,0.75)",
+                        borderpad=2,
+                        yanchor="top",
+                        yshift=YSHIFTS[i % 3],
+                    ),
+                    annotation_position="top left",
+                )
+
+            fig_p.update_layout(
+                height=560,
+                xaxis=dict(title="周 / Week", showgrid=True, gridcolor="#F3F4F6"),
+                yaxis=dict(title="周环比增长倍数 / Weekly Spike (1.0 = flat)",
+                           showgrid=True, gridcolor="#F3F4F6"),
+                plot_bgcolor="white", paper_bgcolor="white",
+                margin=dict(l=10, r=20, t=90, b=40),
+                legend=dict(orientation="h", y=-0.10, font=dict(size=10)),
+                hovermode="x unified",
+            )
+            st.plotly_chart(fig_p, use_container_width=True)
+
+            # Legend note
+            st.markdown(
+                '<div class="chart-caption">'
+                '🟣 紫色虚线 = 美国节假日 &nbsp;|&nbsp; 🟠 橙色底纹 = TikTok Shop 站内活动 &nbsp;|&nbsp; '
+                '🟢 绿色底纹 = Prophet 预测区间（未来4周）'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            st.info("该品类暂无 Prophet 预测数据。")
