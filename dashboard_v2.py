@@ -20,9 +20,10 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-DATA_PATH     = Path(__file__).parent / "data" / "processed" / "dashboard_data_500k.pkl"
-FORECAST_PATH = Path(__file__).parent / "data" / "processed" / "forecast_data.pkl"
-PARQUET_PATH  = Path(__file__).parent / "data" / "processed" / "nlp_clustered_500k.parquet"
+DATA_PATH        = Path(__file__).parent / "data" / "processed" / "dashboard_data_500k.pkl"
+FORECAST_PATH    = Path(__file__).parent / "data" / "processed" / "forecast_data.pkl"
+PARQUET_PATH     = Path(__file__).parent / "data" / "processed" / "nlp_clustered_500k.parquet"
+BRAND_POSTS_PATH = Path(__file__).parent / "data" / "processed" / "brand_posts_index.pkl"
 
 # ── US Holidays & TikTok Shop events (data range: 2025-12-29 ~ 2026-06-28) ──
 US_HOLIDAYS = {
@@ -93,9 +94,17 @@ def load_data():
         return pickle.load(f)
 
 @st.cache_data
+def load_brand_posts_index() -> dict | None:
+    """Pre-computed brand→posts index (small, always in git). Used on Cloud."""
+    if not BRAND_POSTS_PATH.exists():
+        return None
+    with open(BRAND_POSTS_PATH, "rb") as f:
+        return pickle.load(f)
+
+@st.cache_data
 def load_posts_df():
-    """Load minimal post columns from parquet for brand-level post search.
-    Returns None if parquet not available (e.g., cloud deployment)."""
+    """Load full parquet for brand post search (local only, 371MB).
+    Returns None if parquet not available (cloud deployment)."""
     if not PARQUET_PATH.exists():
         return None
     cols = ["category", "title", "ner_input", "url", "community",
@@ -529,31 +538,37 @@ with tab3:
     with pb_col:
         t3_post_n = st.slider("展示帖子数 / Show N posts", 5, 30, 10, 5, key="t3_post_n")
 
-    # Load posts from parquet (cached); falls back to sample_posts if parquet unavailable
-    posts_df = load_posts_df()
-    if posts_df is None:
-        # Cloud mode: build a minimal DataFrame from pre-computed sample_posts
-        sample = row["sample_posts"] if isinstance(row.get("sample_posts"), list) else []
-        if sample:
-            cat_posts = pd.DataFrame(sample)
-            cat_posts["ner_input"] = cat_posts["title"]
-            cat_posts["published_at"] = pd.NaT
-        else:
-            cat_posts = pd.DataFrame()
-        if not cat_posts.empty and brand_filter != "全部品牌 / All Brands":
-            pat = brand_filter.replace("(", r"\(").replace(")", r"\)")
-            cat_posts = cat_posts[cat_posts["title"].str.contains(pat, case=False, na=False)]
-        st.caption("⚠️ 完整帖子库未加载（云端部署），仅展示预计算样本帖。")
-    else:
-        cat_posts = posts_df[posts_df["category"] == selected].copy()
-        if brand_filter != "全部品牌 / All Brands":
-            pat = brand_filter.replace("(", r"\(").replace(")", r"\)")
-            cat_posts = cat_posts[
-                cat_posts["ner_input"].str.contains(pat, case=False, na=False) |
-                cat_posts["title"].str.contains(pat, case=False, na=False)
-            ]
+    # Priority: brand_posts_index (fast, works on Cloud) → full parquet (local only)
+    brand_idx = load_brand_posts_index()
+    posts_df  = load_posts_df()
 
-    cat_posts = cat_posts.sort_values("engagement_score", ascending=False).head(t3_post_n)
+    if brand_filter != "全部品牌 / All Brands" and brand_idx is not None:
+        # Use pre-computed index (available everywhere)
+        records = brand_idx.get(selected, {}).get(brand_filter, [])
+        cat_posts = pd.DataFrame(records) if records else pd.DataFrame()
+        if not cat_posts.empty:
+            cat_posts["published_at"] = pd.to_datetime(cat_posts["published_at"], errors="coerce")
+    elif brand_filter == "全部品牌 / All Brands" and posts_df is not None:
+        # Full parquet available locally — search all posts in category
+        cat_posts = posts_df[posts_df["category"] == selected].copy()
+    elif brand_filter == "全部品牌 / All Brands" and brand_idx is not None:
+        # Cloud: merge all brands' pre-computed posts for this category
+        all_records = []
+        for posts in brand_idx.get(selected, {}).values():
+            all_records.extend(posts)
+        cat_posts = pd.DataFrame(all_records).drop_duplicates(subset=["url"]) if all_records else pd.DataFrame()
+        if not cat_posts.empty:
+            cat_posts["published_at"] = pd.to_datetime(cat_posts["published_at"], errors="coerce")
+    else:
+        # Last resort: sample_posts from PKL
+        sample = row["sample_posts"] if isinstance(row.get("sample_posts"), list) else []
+        cat_posts = pd.DataFrame(sample) if sample else pd.DataFrame()
+        if not cat_posts.empty:
+            cat_posts["published_at"] = pd.NaT
+
+    if not cat_posts.empty and "engagement_score" in cat_posts.columns:
+        cat_posts = cat_posts.sort_values("engagement_score", ascending=False)
+    cat_posts = cat_posts.head(t3_post_n)
 
     if cat_posts.empty:
         st.info("该筛选条件下暂无帖子 / No posts found for this filter.")

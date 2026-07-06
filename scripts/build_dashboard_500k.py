@@ -752,12 +752,12 @@ def main() -> None:
         def _classify_direction(row: pd.Series) -> str:
             if (row["mentions_c"]    >= 50 and
                 row["mentions_delta"] >= 50 and
-                row["spike_ratio"]   >= 2.3 and
+                row["spike_ratio"]   >= 1.6 and
                 row["communities_c"] >= 3):
                 return "rising"
             if (row["mentions_p"]    >= 50 and
                 row["mentions_delta"] <= -25 and
-                row["spike_ratio"]   <= 0.5):
+                row["spike_ratio"]   <= 0.8):
                 return "declining"
             return "stable"
 
@@ -814,6 +814,43 @@ def main() -> None:
     with open(OUT_PKL, "wb") as f:
         pickle.dump(payload, f)
     log.info("Saved → %s", OUT_PKL)
+
+    # ── Brand posts index (for Streamlit Cloud where full parquet is unavailable) ──
+    # For each (category, brand) in the latest window, store top 10 posts by engagement.
+    log.info("Building brand posts index …")
+    latest_win   = list(windows.keys())[0]
+    latest_df    = df[df["published_at"] >= windows[latest_win]["cur_start"]].copy()
+    POST_COLS    = ["title", "community", "engagement_score", "sentiment_label",
+                    "url", "published_at"]
+    brand_posts_index: dict[str, dict[str, list[dict]]] = {}
+
+    latest_cat_brand = all_window_data[latest_win]["cat_brand_data"]
+    for cat, bdf in latest_cat_brand.items():
+        if bdf.empty:
+            continue
+        brand_posts_index[cat] = {}
+        cat_df = latest_df[latest_df["category"] == cat]
+        for brand in bdf["brand"].tolist():
+            pat = re.escape(brand)
+            mask = (
+                cat_df["ner_input"].str.contains(pat, case=False, na=False) |
+                cat_df["title"].str.contains(pat, case=False, na=False)
+            )
+            hits = (
+                cat_df[mask]
+                .nlargest(10, "engagement_score")[POST_COLS]
+                .copy()
+            )
+            hits["published_at"] = hits["published_at"].astype(str)
+            brand_posts_index[cat][brand] = hits.to_dict("records")
+
+    brand_posts_path = ROOT / "data" / "processed" / "brand_posts_index.pkl"
+    with open(brand_posts_path, "wb") as f:
+        pickle.dump(brand_posts_index, f)
+    total_entries = sum(len(v) for v in brand_posts_index.values())
+    log.info("Brand posts index: %d categories, %d brands → %s (%.0f KB)",
+             len(brand_posts_index), total_entries, brand_posts_path,
+             brand_posts_path.stat().st_size / 1024)
 
 
 if __name__ == "__main__":
