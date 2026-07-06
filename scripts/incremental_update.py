@@ -47,8 +47,9 @@ F_EMB_NPY      = _ROOT / "data" / "processed" / "embeddings_500k.npy"
 F_EMB_IDS      = _ROOT / "data" / "processed" / "embeddings_500k_ids.txt"
 F_HDBSCAN_MDL  = _ROOT / "data" / "processed" / "hdbscan_model.pkl"
 
-DASHBOARD_SCRIPT = _ROOT / "scripts" / "build_dashboard_500k.py"
-FORECAST_SCRIPT  = _ROOT / "scripts" / "build_forecast.py"
+DASHBOARD_SCRIPT        = _ROOT / "scripts" / "build_dashboard_500k.py"
+FORECAST_SCRIPT         = _ROOT / "scripts" / "build_forecast.py"
+ASSIGN_CLUSTERS_SCRIPT  = _ROOT / "scripts" / "assign_target_clusters.py"
 
 EMBED_MODEL   = "all-MiniLM-L6-v2"
 EMBED_BATCH   = 128
@@ -264,10 +265,13 @@ def main() -> None:
     # 5 & 6. Append
     append_to_parquets(new_df, cluster_ids, new_vecs)
 
+    # 7. Assign target clusters to all posts (incremental: only new embeddings change)
+    run_script(ASSIGN_CLUSTERS_SCRIPT, "assign_target_clusters")
+
     if not args.skip_dashboard:
-        # 7. Dashboard
+        # 8. Dashboard
         run_script(DASHBOARD_SCRIPT, "build_dashboard_500k")
-        # 8. Forecast
+        # 9. Forecast
         run_script(FORECAST_SCRIPT, "build_forecast")
 
     log.info("=" * 60)

@@ -197,11 +197,13 @@ def scrape_reddit_arctic(
     headers = {"User-Agent": USER_AGENT}
     done_subs = set(checkpoint.get("done_arctic_subreddits", []))
 
-    # Priority ordering
+    # Priority ordering — keys must match sources.json reddit.subreddit_categories
     subreddit_order: list[tuple[str, str]] = []
-    priority_cats = ["creator_commerce_social", "deals_reviews_shopping",
-                     "beauty_skincare_hair", "health_wellness_supplements",
-                     "fashion_apparel_accessories"]
+    priority_cats = [
+        "creator_commerce", "deals_shopping_reviews",
+        "beauty_skincare", "supplements_nutrition",
+        "womens_fashion", "mens_fashion", "fashion_accessories",
+    ]
     for cat in priority_cats:
         for sub in SUBREDDIT_CATEGORIES.get(cat, []):
             subreddit_order.append((cat, sub))
@@ -339,11 +341,13 @@ def scrape_reddit_json(
     done_subs = set(checkpoint.get("done_json_subreddits", []))
     cutoff_ts = _date_to_unix("2026-01-01")
 
-    # Flatten + prioritize subreddits
+    # Flatten + prioritize subreddits — keys must match sources.json
     subreddit_order: list[tuple[str, str]] = []
-    priority_cats = ["creator_commerce_social", "deals_reviews_shopping",
-                     "beauty_skincare_hair", "health_wellness_supplements",
-                     "fashion_apparel_accessories"]
+    priority_cats = [
+        "creator_commerce", "deals_shopping_reviews",
+        "beauty_skincare", "supplements_nutrition",
+        "womens_fashion", "mens_fashion", "fashion_accessories",
+    ]
     for cat in priority_cats:
         for sub in SUBREDDIT_CATEGORIES.get(cat, []):
             subreddit_order.append((cat, sub))

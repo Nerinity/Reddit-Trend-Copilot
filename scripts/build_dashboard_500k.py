@@ -1,26 +1,53 @@
 #!/usr/bin/env python3
-"""Build dashboard_data_500k.pkl — dual-layer brand extraction pipeline.
+"""Build dashboard_data_500k.pkl — 8-layer brand extraction pipeline.
 
 Architecture
 ============
-Layer 1  Whitelist scan
-    Single canonical source: Brand List Available全域.xlsx
-    N-gram lookup → confidence 1.0, source "whitelist"
+Layer 0   Normalization
+    Unicode NFKC, accent stripping, apostrophe/dash normalization.
+    Applied to raw text before any matching so accented variants
+    (L'Oréal → LOreal) resolve correctly against the whitelist.
 
-Layer 2  Candidate discovery
-    Regex patterns detect brand-like tokens (ALL_CAPS, CamelCase, TitleCase, quoted)
-    KNOWN_BRANDS supplements regex for words that look generic but are real brands
-    Each candidate is scored; score >= CANDIDATE_THRESHOLD → accepted
+Layer 1   Whitelist exact + normalized exact
+    Single canonical source: Brand List Available全域.xlsx.
+    N-gram lookup after Layer 0 normalization → confidence 1.0.
 
-HARD_REJECT
-    NLTK English stopwords  (function words, systematic)
-    wordfreq top-1 000      (ultra-common English, e.g. "great", "best")
-    Manual domain additions (product-category descriptors, Reddit slang)
+Layer 1.5 English aliases / spelling variants
+    BRAND_ALIASES dict maps lowercase aliases and common misspellings
+    to canonical display names (e.g. "loreal" → "L'Oréal",
+    "la roche posay" → "La Roche-Posay").
 
-Disambiguation
-    Tokens that match brand patterns but are also common English words
-    (wordfreq > AMBIGUITY_FREQ_THRESHOLD) trigger a context window check
-    before being accepted.
+Layer 2   Product-line-to-brand mapping
+    PRODUCT_LINE_MAP maps specific product lines to the parent brand
+    (e.g. "airpods" → "Apple", "galaxy buds" → "Samsung").
+    Adds the parent brand in addition to any other matches.
+
+Layer 3   Regex candidate discovery
+    Patterns detect brand-like tokens: ALL_CAPS, CamelCase, TitleCase,
+    multi-word TitleCase, and quoted strings.
+    KNOWN_BRANDS supplements regex for words that look generic.
+
+Layer 4   Contextual scoring
+    Each regex candidate is scored with score_candidate():
+    pattern bonus, wordfreq signal, brand-context keywords.
+    score >= CANDIDATE_THRESHOLD (0.65) → accepted.
+
+Layer 5   Ambiguous brand resolver
+    _BRAND_CTX_RE / _ANTI_CTX_RE applied to context windows:
+    common words (apple, coach, ring …) accepted only when brand
+    signals are present and anti-brand signals are absent.
+
+Layer 6   Cross-community evidence
+    cand_comms tracking in build_brand_tables Pass 1 gives a +0.10
+    boost in score_candidate for brands seen in 3+ communities.
+
+Layer 7   Hard reject
+    HARD_REJECT (NLTK stopwords + absolute noise) and PRODUCT_TERMS
+    (ingredients, product types, descriptors) applied at every layer.
+
+Layer 8   Review queue
+    Candidates with score in [0.45, 0.65) are flagged but not accepted.
+    Written to brand_review_queue.csv after each full run.
 
 Output columns per brand
     brand, cur_mentions, prev_mentions, brand_spike,
@@ -30,6 +57,7 @@ from __future__ import annotations
 import logging
 import pickle
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -272,6 +300,192 @@ KNOWN_BRANDS: set[str] = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3.5  BRAND_ALIASES  (Layer 1.5)
+# ─────────────────────────────────────────────────────────────────────────────
+# Maps lowercase alias / common misspelling → canonical display name.
+# Applied AFTER Layer 1 whitelist misses.  Keys are searched case-insensitively
+# in the full post text (not just token boundaries) so multi-word aliases work.
+
+BRAND_ALIASES: dict[str, str] = {
+    # L'Oréal variants
+    "loreal":                   "L'Oréal",
+    "l oreal":                  "L'Oréal",
+    "l'oreal":                  "L'Oréal",
+    # La Roche-Posay
+    "la roche posay":           "La Roche-Posay",
+    "laroche posay":            "La Roche-Posay",
+    "la roche-posay":           "La Roche-Posay",
+    # SK-II
+    "skii":                     "SK-II",
+    "sk ii":                    "SK-II",
+    "sk2":                      "SK-II",
+    # e.l.f. Cosmetics
+    "elf cosmetics":            "e.l.f. Cosmetics",
+    # Pat McGrath
+    "pat mcgrath":              "Pat McGrath Labs",
+    "pmg":                      "Pat McGrath Labs",
+    # Charlotte Tilbury
+    "charlotte tilbury":        "Charlotte Tilbury",
+    "ct beauty":                "Charlotte Tilbury",
+    # Too Faced
+    "too faced":                "Too Faced",
+    # Urban Decay
+    "urban decay":              "Urban Decay",
+    # The Ordinary
+    "the ordinary":             "The Ordinary",
+    # The Inkey List
+    "the inkey list":           "The Inkey List",
+    "inkey list":               "The Inkey List",
+    # Paula's Choice
+    "paulas choice":            "Paula's Choice",
+    "paula's choice":           "Paula's Choice",
+    # SkinCeuticals
+    "skinceuticals":            "SkinCeuticals",
+    # Glow Recipe
+    "glow recipe":              "Glow Recipe",
+    # Sunday Riley
+    "sunday riley":             "Sunday Riley",
+    # Dear Klairs
+    "dear klairs":              "Dear Klairs",
+    "klairs":                   "Dear Klairs",
+    # Some By Mi
+    "some by mi":               "Some By Mi",
+    # Dr. Jart+
+    "dr jart":                  "Dr. Jart+",
+    "dr. jart":                 "Dr. Jart+",
+    "drjart":                   "Dr. Jart+",
+    # Mario Badescu
+    "mario badescu":            "Mario Badescu",
+    # Peter Thomas Roth
+    "peter thomas roth":        "Peter Thomas Roth",
+    # Nature Republic
+    "nature republic":          "Nature Republic",
+    # Etude House
+    "etude house":              "Etude House",
+    # Drunk Elephant
+    "drunk elephant":           "Drunk Elephant",
+    # Good Molecules
+    "good molecules":           "Good Molecules",
+    # On Running
+    "on running":               "On Running",
+    # New Balance
+    "new balance":              "New Balance",
+    # Hoka One One
+    "hoka one one":             "HOKA",
+    # Arc'teryx
+    "arcteryx":                 "Arc'teryx",
+    "arc teryx":                "Arc'teryx",
+    # Le Creuset
+    "le creuset":               "Le Creuset",
+    # De'Longhi
+    "delonghi":                 "De'Longhi",
+    "de longhi":                "De'Longhi",
+    # KitchenAid
+    "kitchenaid":               "KitchenAid",
+    # Vitamix
+    "vitamix":                  "Vitamix",
+    # Lodge Cast Iron
+    "lodge cast iron":          "Lodge",
+    # Staub
+    "staub cookware":           "Staub",
+    # Zojirushi
+    "zojirushi":                "Zojirushi",
+    # Stanley (drinkware, not tools)
+    "stanley cup":              "Stanley",
+    "stanley tumbler":          "Stanley",
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 3.6  PRODUCT_LINE_MAP  (Layer 2)
+# ─────────────────────────────────────────────────────────────────────────────
+# Maps specific product lines (lowercase) → parent brand display name.
+# When a product line is found in text, the parent brand is ADDED to matches
+# (the product line itself may also remain as its own match).
+# Keys are searched case-insensitively as substrings in the post text.
+
+PRODUCT_LINE_MAP: dict[str, str] = {
+    # Apple
+    "airpods":          "Apple",
+    "iphone":           "Apple",
+    "ipad":             "Apple",
+    "macbook":          "Apple",
+    "apple watch":      "Apple",
+    "apple tv":         "Apple",
+    "apple card":       "Apple",
+    # Samsung
+    "galaxy s":         "Samsung",
+    "galaxy z":         "Samsung",
+    "galaxy a":         "Samsung",
+    "galaxy tab":       "Samsung",
+    "galaxy buds":      "Samsung",
+    "galaxy watch":     "Samsung",
+    # Google
+    "pixel phone":      "Google",
+    "pixel buds":       "Google",
+    "pixel watch":      "Google",
+    "chromecast":       "Google",
+    "google home":      "Google",
+    "nest mini":        "Google",
+    "nest hub":         "Google",
+    # Microsoft
+    "surface pro":      "Microsoft",
+    "surface laptop":   "Microsoft",
+    "surface go":       "Microsoft",
+    "xbox series":      "Microsoft",
+    "xbox one":         "Microsoft",
+    # Sony
+    "playstation 5":    "Sony",
+    "playstation 4":    "Sony",
+    "ps5":              "Sony",
+    "ps4":              "Sony",
+    "wh-1000":          "Sony",   # WH-1000XM noise-cancelling headphone series
+    "linkbuds":         "Sony",
+    # Nintendo
+    "nintendo switch":  "Nintendo",
+    "switch oled":      "Nintendo",
+    "switch lite":      "Nintendo",
+    # Amazon
+    "echo dot":         "Amazon",
+    "echo show":        "Amazon",
+    "echo pop":         "Amazon",
+    "fire tv":          "Amazon",
+    "fire tablet":      "Amazon",
+    # Dyson
+    "dyson airwrap":    "Dyson",
+    "dyson supersonic": "Dyson",
+    "dyson v":          "Dyson",
+    "dyson tp":         "Dyson",
+    # iRobot
+    "roomba":           "iRobot",
+    # GoPro
+    "gopro hero":       "GoPro",
+    "gopro max":        "GoPro",
+    # Instant Brands
+    "instant pot":      "Instant Brands",
+    # Nespresso
+    "nespresso vertuo": "Nespresso",
+    "nespresso original":"Nespresso",
+    # Keurig
+    "keurig k-":        "Keurig",
+    # Vitamix blenders
+    "vitamix a":        "Vitamix",
+    "vitamix e":        "Vitamix",
+    # Shark vacuums
+    "shark navigator":  "Shark",
+    "shark iz":         "Shark",
+    "shark stratos":    "Shark",
+    # LAMY pens
+    "lamy safari":      "LAMY",
+    "lamy 2000":        "LAMY",
+    # Pilot pens
+    "pilot metropolitan": "Pilot",
+    "pilot kakuno":     "Pilot",
+    # Twsbi
+    "twsbi eco":        "TWSBI",
+    "twsbi diamond":    "TWSBI",
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SECTION 4  Brand-context signals
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -322,6 +536,23 @@ def normalize_display(raw: str) -> str:
     if b.islower():
         return b.title()
     return b
+
+
+def normalize_for_match(s: str) -> str:
+    """Layer 0: unicode NFKC + accent strip + apostrophe/dash normalization.
+
+    Makes L'Oréal → L'Oreal, naïve → naive, etc., so whitelist keys built
+    from accent-free names still match accented text (and vice-versa).
+    """
+    s = unicodedata.normalize("NFKC", s)
+    # Strip combining diacritics (accents)
+    nfd = unicodedata.normalize("NFD", s)
+    s = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+    # Normalize curly/fancy apostrophes → straight '
+    s = re.sub(r"[‘’`´]", "'", s)
+    # Normalize em/en dashes → hyphen
+    s = re.sub(r"[–—−]", "-", s)
+    return s
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -473,91 +704,138 @@ def score_candidate(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SECTION 9  Per-post extraction  (both layers)
+# SECTION 9  Per-post extraction  (8-layer pipeline)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class BrandMatch:
     brand:      str
     confidence: float
-    source:     str    # "whitelist" | "candidate" | "known_brand"
+    source:     str    # "whitelist"|"alias"|"product_line"|"known_brand"|"candidate"
     evidence:   str
+
+
+# Layer 8: review queue — borderline candidates (score in [0.45, CANDIDATE_THRESHOLD))
+# Reset and exported to CSV by main() after each full run.
+_review_queue: list[dict] = []
 
 
 def extract_brands_from_post(
     text: str,
     whitelist: dict[str, str],
-    cand_freq: dict[str, int] | None   = None,
+    cand_freq:  dict[str, int] | None  = None,
     cand_comms: dict[str, int] | None  = None,
+    community:  str                    = "",
 ) -> list[BrandMatch]:
-    """Extract brand matches from one post. Returns one BrandMatch per brand."""
-    # Pre-normalize text so "La-Mer" → "La Mer" (2 tokens) before splitting,
-    # enabling hyphenated brand names to form correct n-grams.
-    norm_text = _PUNCT_RE.sub(" ", text)
-    norm_text = _SPACE_RE.sub(" ", norm_text).strip()
-    tokens  = norm_text.split()
-    matched : dict[str, BrandMatch] = {}
+    """Extract brand matches — 8-layer pipeline. Returns one BrandMatch per brand."""
+    global _review_queue
 
-    # ── Layer 1: whitelist n-gram scan ────────────────────────────────────
+    # ── Layer 0: Normalize ────────────────────────────────────────────────
+    # Unicode NFKC + accent stripping + apostrophe/dash normalization so that
+    # "L'Oréal" in text resolves against "loreal" whitelist key, etc.
+    norm_text = normalize_for_match(text)
+    # Pre-normalize for n-gram tokenization (hyphens → spaces, collapse whitespace)
+    gram_text = _PUNCT_RE.sub(" ", norm_text)
+    gram_text = _SPACE_RE.sub(" ", gram_text).strip()
+    tokens    = gram_text.split()
+    matched: dict[str, BrandMatch] = {}
+
+    # ── Layer 1: Whitelist exact + normalized exact ───────────────────────
     for n in range(1, min(5, len(tokens) + 1)):
         for i in range(len(tokens) - n + 1):
             gram = " ".join(tokens[i : i + n])
             key  = _norm(gram)
             if key not in whitelist:
                 continue
-            # Context window for disambiguation
-            pos = text.find(gram)
-            ctx = text[max(0, pos - 60) : pos + len(gram) + 60]
-            # Reject if clearly in anti-brand context
-            if _ANTI_CTX_RE.search(ctx):
-                continue
-            # Reject product-category terms even if they appear in whitelist
+            # Layer 7: hard reject even within whitelist
             if key in PRODUCT_TERMS:
+                continue
+            # Layer 5: context window — anti-brand signal
+            pos = norm_text.find(gram)
+            ctx = text[max(0, pos - 60) : pos + len(gram) + 60] if pos >= 0 else ""
+            if _ANTI_CTX_RE.search(ctx):
                 continue
             display = whitelist[key]
             if key not in matched:
                 matched[key] = BrandMatch(display, 1.0, "whitelist", "whitelist_match")
 
-    # ── Layer 2: candidate discovery (regex + KNOWN_BRANDS) ───────────────
-    # Also check KNOWN_BRANDS that appear in text (lowercase match)
-    text_lower = text.lower()
+    # ── Layer 1.5: BRAND_ALIASES — spelling variants / lowercase aliases ──
+    text_lower = norm_text.lower()
+    for alias, canonical in BRAND_ALIASES.items():
+        if alias not in text_lower:
+            continue
+        alias_key = _norm(alias)
+        if alias_key in matched:
+            continue
+        idx = text_lower.find(alias)
+        ctx = text[max(0, idx - 60) : idx + len(alias) + 60]
+        # Layer 7 + Layer 5
+        if _ANTI_CTX_RE.search(ctx):
+            continue
+        matched[alias_key] = BrandMatch(canonical, 1.0, "alias", "brand_alias")
+
+    # ── Layer 2: PRODUCT_LINE_MAP — product line → parent brand ──────────
+    for product_line, parent_brand in PRODUCT_LINE_MAP.items():
+        if product_line not in text_lower:
+            continue
+        parent_key = _norm(parent_brand)
+        if parent_key in matched:
+            continue
+        idx = text_lower.find(product_line)
+        ctx = text[max(0, idx - 60) : idx + len(product_line) + 60]
+        if _ANTI_CTX_RE.search(ctx):
+            continue
+        matched[parent_key] = BrandMatch(
+            parent_brand, 0.95, "product_line", f"product_line:{product_line}"
+        )
+
+    # ── Layer 3: Regex candidate discovery + KNOWN_BRANDS ────────────────
+    # KNOWN_BRANDS — words that look generic but are real brands
     for brand_norm in KNOWN_BRANDS:
         if brand_norm in matched:
             continue
         if brand_norm not in text_lower:
             continue
-        # Find the actual occurrence and check context
         idx = text_lower.find(brand_norm)
         ctx = text[max(0, idx - 60) : idx + len(brand_norm) + 60]
+        # Layer 5: Ambiguous brand resolver
         if _ANTI_CTX_RE.search(ctx):
             continue
-        # Only accept known brands if they appear near a brand signal
-        # (avoids "apple pie" being accepted just because "apple" is in KNOWN_BRANDS)
         freq = _wfreq(brand_norm)
         if freq > AMBIGUITY_FREQ_THRESHOLD and not _BRAND_CTX_RE.search(ctx):
             continue
         display = normalize_display(brand_norm)
         matched[brand_norm] = BrandMatch(display, 0.85, "known_brand", "known_brand+ctx")
 
-    # Regex-based candidates
+    # Regex patterns (ALL_CAPS, CamelCase, TitleCase, quoted)
     candidates = extract_candidate_tokens(text)
     for raw, pat_type in candidates:
         cand_norm = _norm(raw)
         if not cand_norm or len(cand_norm) < 3 or cand_norm in matched:
             continue
-        if cand_norm in HARD_REJECT:
-            continue
-        if cand_norm in PRODUCT_TERMS:
+        # Layer 7: Hard reject
+        if cand_norm in HARD_REJECT or cand_norm in PRODUCT_TERMS:
             continue
         pos = text.find(raw)
         ctx = text[max(0, pos - 60) : pos + len(raw) + 60] if pos >= 0 else ""
         freq_  = cand_freq.get(cand_norm, 1)  if cand_freq  else 1
         comms_ = cand_comms.get(cand_norm, 1) if cand_comms else 1
+        # Layer 4: contextual scoring (includes Layer 5 anti-ctx, Layer 6 community boost)
         score, evidence = score_candidate(cand_norm, raw, pat_type, ctx, freq_, comms_)
         if score >= CANDIDATE_THRESHOLD:
             display = normalize_display(raw)
             if display:
                 matched[cand_norm] = BrandMatch(display, score, "candidate", evidence)
+        elif 0.45 <= score < CANDIDATE_THRESHOLD:
+            # Layer 8: Review queue — borderline candidates flagged for inspection
+            _review_queue.append({
+                "brand_norm": cand_norm,
+                "brand_raw":  raw,
+                "score":      score,
+                "evidence":   evidence,
+                "context":    ctx[:120],
+                "community":  community,
+            })
 
     return list(matched.values())
 
@@ -618,7 +896,9 @@ def build_brand_tables(
     brand_meta:      dict[str, dict[str, BrandMatch]] = defaultdict(dict)
 
     for row in df_cur.itertuples():
-        matches = extract_brands_from_post(row.ner, whitelist, cand_freq, cand_comm_count)
+        matches = extract_brands_from_post(
+            row.ner, whitelist, cand_freq, cand_comm_count, community=row.community
+        )
         for m in matches:
             key = _norm(m.brand)
             brand_cur_cnt[row.category][m.brand]          += 1
@@ -685,14 +965,32 @@ def build_brand_tables(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
+    global _review_queue
+    _review_queue = []   # reset Layer 8 queue for this run
+
     log.info("Loading parquet …")
     df = pd.read_parquet(PARQUET)
     df["published_at"] = pd.to_datetime(df["published_at"], utc=True, errors="coerce")
-    df["category"]     = df["category"].fillna("unknown")
     df["title"]        = df["title"].fillna("")
     df["text"]         = df["text"].fillna("").str[:400]
     df["ner"]          = (df["title"] + " " + df["text"]).str.strip()
     log.info("Rows: %d", len(df))
+
+    # Use target_cluster (171 TikTok Shop taxonomy) as primary dashboard dimension.
+    # Falls back to legacy subreddit-based category for posts not yet assigned.
+    if "target_cluster" in df.columns:
+        valid_mask = (
+            df["target_cluster"].notna() &
+            ~df["target_cluster"].isin(["unassigned", "unknown", ""])
+        )
+        df["category"] = df["category"].fillna("unknown")
+        df.loc[valid_mask, "category"] = df.loc[valid_mask, "target_cluster"]
+        log.info("target_cluster taxonomy applied to %d / %d posts  (%.1f%%)",
+                 valid_mask.sum(), len(df), 100 * valid_mask.sum() / len(df))
+    else:
+        df["category"] = df["category"].fillna("unknown")
+        log.info("target_cluster column not found — using legacy category labels. "
+                 "Run scripts/assign_target_clusters.py to enable 171-cluster taxonomy.")
 
     latest  = df["published_at"].max()
     windows : dict[str, dict] = {}
@@ -851,6 +1149,18 @@ def main() -> None:
     log.info("Brand posts index: %d categories, %d brands → %s (%.0f KB)",
              len(brand_posts_index), total_entries, brand_posts_path,
              brand_posts_path.stat().st_size / 1024)
+
+    # ── Layer 8: Export review queue ──────────────────────────────────────
+    if _review_queue:
+        rq_df = (
+            pd.DataFrame(_review_queue)
+            .sort_values("score", ascending=False)
+            .drop_duplicates("brand_norm")
+            .reset_index(drop=True)
+        )
+        rq_path = ROOT / "data" / "processed" / "brand_review_queue.csv"
+        rq_df.to_csv(rq_path, index=False)
+        log.info("Review queue: %d borderline candidates → %s", len(rq_df), rq_path)
 
 
 if __name__ == "__main__":
