@@ -40,12 +40,13 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 STATE.mkdir(parents=True, exist_ok=True)
 
 # Stage output files
-F_CLEAN     = OUT_DIR / "nlp_clean_500k.parquet"
-F_SENTIMENT = OUT_DIR / "nlp_sentiment_500k.parquet"
-F_EMB_NPY   = OUT_DIR / "embeddings_500k.npy"
-F_EMB_IDS   = OUT_DIR / "embeddings_500k_ids.txt"
-F_UMAP_NPY  = OUT_DIR / "umap_500k.npy"
-F_CLUSTER   = OUT_DIR / "nlp_clustered_500k.parquet"
+F_CLEAN       = OUT_DIR / "nlp_clean_500k.parquet"
+F_SENTIMENT   = OUT_DIR / "nlp_sentiment_500k.parquet"
+F_EMB_NPY     = OUT_DIR / "embeddings_500k.npy"
+F_EMB_IDS     = OUT_DIR / "embeddings_500k_ids.txt"
+F_UMAP_NPY    = OUT_DIR / "umap_500k.npy"
+F_CLUSTER     = OUT_DIR / "nlp_clustered_500k.parquet"
+F_HDBSCAN_MDL = OUT_DIR / "hdbscan_model.pkl"   # saved for incremental updates
 
 EMB_CKPT    = STATE / "emb_checkpoint.npy"
 EMB_CKPT_N  = STATE / "emb_checkpoint_n.txt"
@@ -216,11 +217,12 @@ def stage_hdbscan(emb_15: np.ndarray | None = None, df: pd.DataFrame | None = No
     t0 = time.time()
 
     clusterer = hdbscan.HDBSCAN(
-        min_cluster_size=30,   # larger dataset -> can afford bigger min
+        min_cluster_size=30,
         min_samples=10,
         metric="euclidean",
         cluster_selection_method="eom",
         core_dist_n_jobs=-1,
+        prediction_data=True,   # required for approximate_predict on new points
     )
     labels = clusterer.fit_predict(emb_15)
     elapsed = time.time() - t0
@@ -231,6 +233,12 @@ def stage_hdbscan(emb_15: np.ndarray | None = None, df: pd.DataFrame | None = No
     log.info("HDBSCAN done in %.1fmin", elapsed/60)
     log.info("Clusters: %d unique | Valid points: %d | Noise: %d (%.1f%%)",
              n_unique, n_clusters, n_noise, 100*n_noise/len(labels))
+
+    # Save model for incremental updates
+    import pickle
+    with open(F_HDBSCAN_MDL, "wb") as _f:
+        pickle.dump(clusterer, _f, protocol=4)
+    log.info("Saved HDBSCAN model -> %s", F_HDBSCAN_MDL)
 
     df = df.copy()
     df["cluster_id"] = labels
