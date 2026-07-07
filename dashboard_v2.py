@@ -25,6 +25,7 @@ FORECAST_PATH    = Path(__file__).parent / "data" / "processed" / "forecast_data
 PARQUET_PATH     = Path(__file__).parent / "data" / "processed" / "nlp_clustered_500k.parquet"
 BRAND_POSTS_PATH = Path(__file__).parent / "data" / "processed" / "brand_posts_index.pkl"
 BG_PATH          = Path(__file__).parent / "assets" / "tiktok_neon_bg.png"
+DEFAULT_WINDOW_LABEL = "06/20–06/27"
 
 US_HOLIDAYS = {
     "2025-12-25": "🎄 Christmas",
@@ -157,8 +158,15 @@ div[data-testid="stMetricDelta"]{color:#D8F7F6;}
 }
 .trend-stat .label{font-size:.78rem;color:#FFFFFF;font-weight:800;line-height:1.25;}
 .trend-stat .value{font-size:2.15rem;color:#F8FAFC;font-weight:800;margin-top:8px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.trend-stat .value.period{font-size:1.28rem;letter-spacing:0;overflow:visible;white-space:normal;line-height:1.16;}
+.trend-stat .value.period{font-size:1.18rem;letter-spacing:0;overflow:visible;white-space:normal;line-height:1.16;}
 .trend-stat .delta{display:inline-block;margin-top:8px;font-size:.78rem;color:#D8F7F6;background:rgba(255,255,255,.06);border-radius:999px;padding:3px 8px;}
+.period-range{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px;}
+.period-range div{
+  background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.10);
+  border-radius:12px;padding:8px 10px;
+}
+.period-range span{display:block;color:#D8F7F6;font-size:.7rem;font-weight:850;margin-bottom:3px;}
+.period-range strong{display:block;color:#FFFFFF;font-size:.95rem;font-weight:900;line-height:1.1;white-space:nowrap;}
 @media(max-width:900px){.trend-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.trend-stat .value{font-size:1.8rem;}}
 .chart-caption{
   font-size:.78rem;color:#FFFFFF;margin-bottom:.65rem;line-height:1.5;font-weight:750;
@@ -336,6 +344,11 @@ def apply_dynamic_trend_direction(stats: pd.DataFrame) -> pd.DataFrame:
 all_data     = load_data()
 win_labels   = all_data["window_labels"]
 windows_data = all_data["windows"]
+default_window_index = (
+    win_labels.index(DEFAULT_WINDOW_LABEL)
+    if DEFAULT_WINDOW_LABEL in win_labels
+    else min(1, max(len(win_labels) - 1, 0))
+)
 
 # ── Signal Radar welcome header ───────────────────────────────────────────────
 st.markdown("""
@@ -356,7 +369,7 @@ with nav_l:
     selected_window = st.selectbox(
         "时间周期 / Period",
         options=win_labels,
-        index=0,
+        index=default_window_index,
         label_visibility="collapsed",
     )
 with nav_r:
@@ -386,17 +399,22 @@ rising_total    = (stats_all["trend_direction"] == "rising").sum()
 stable_total    = (stats_all["trend_direction"] == "stable").sum()
 declining_total = (stats_all["trend_direction"] == "declining").sum()
 total_mentions  = int(stats_all["current_mentions"].sum()) if "current_mentions" in stats_all else 0
-period_label    = f"{win['cur_start'].strftime('%Y/%m/%d')} → {win['cur_end'].strftime('%Y/%m/%d')}"
-compare_label   = f"{win['prev_start'].strftime('%Y/%m/%d')} → {win['prev_end'].strftime('%Y/%m/%d')}"
+period_start_label  = win["cur_start"].strftime("%Y/%m/%d")
+period_end_label    = win["cur_end"].strftime("%Y/%m/%d")
+compare_start_label = win["prev_start"].strftime("%Y/%m/%d")
+compare_end_label   = win["prev_end"].strftime("%Y/%m/%d")
 
 # ── KPI summary row ───────────────────────────────────────────────────────────
 cluster_total = max(len(stats_all), 1)
 st.markdown(f"""
 <div class="trend-stat-grid">
   <div class="trend-stat">
-    <div class="label">分析区间 Period</div>
+    <div class="label">当前周期 Current Week</div>
     <div class="value period">{selected_window}</div>
-    <div class="delta">{period_label}</div>
+    <div class="period-range">
+      <div><span>开始 Start</span><strong>{period_start_label}</strong></div>
+      <div><span>结束 End</span><strong>{period_end_label}</strong></div>
+    </div>
   </div>
   <div class="trend-stat">
     <div class="label">活跃类目 Clusters</div>
@@ -423,7 +441,9 @@ st.markdown(f"""
 
 st.markdown(
     f"<div class='chart-caption' style='margin-top:6px'>"
-    f"<b>本期讨论量</b> {total_mentions:,} 条帖子 · 对比区间 {compare_label} · "
+    f"<b>本期讨论量</b> {total_mentions:,} 条帖子 · "
+    f"当前周期：开始 {period_start_label} / 结束 {period_end_label} · "
+    f"对比周期：开始 {compare_start_label} / 结束 {compare_end_label} · "
     "关键词包含品牌、产品词、趋势词和用户关心的具体对象<br>"
     f"<b>动态阈值</b> Rising = 本周≥{TREND_THRESHOLDS['min_current_mentions']} 且 环比≥+{TREND_THRESHOLDS['min_rise_abs_delta']} "
     f"且 相对增长≥{TREND_THRESHOLDS['min_rise_relative_change']:.0%}；"
