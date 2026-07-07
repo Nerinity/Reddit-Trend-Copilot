@@ -1,49 +1,49 @@
 {
-  "published_at_utc": "2026-07-07T06:30:49.429021+00:00",
-  "source_commit": "fbe5aa1",
+  "published_at_utc": "2026-07-07T23:39:44.042748+00:00",
+  "source_commit": "cb2c01b",
   "artifact_count": 7,
   "artifacts": [
     {
       "path": "data/processed/dashboard_data_500k.pkl",
-      "bytes": 2802451,
-      "sha256": "33da8b6e73ec4701b4f6c0a694a727f2d2d5967ff03bcd42dbe034887340c070",
-      "modified_at_utc": "2026-07-07T05:26:34.238524+00:00"
+      "bytes": 2811861,
+      "sha256": "d98fe788871c413e93c6bf8bab71ba1b642077d7b4754481d92ea697a3559fb0",
+      "modified_at_utc": "2026-07-07T22:56:02.356029+00:00"
     },
     {
       "path": "data/processed/brand_posts_index.pkl",
       "bytes": 3141793,
       "sha256": "14da0f02195d20737e87d0bde39a8d43c81f2e58208e083b8e8bd935dd04fba7",
-      "modified_at_utc": "2026-07-07T05:26:34.203248+00:00"
+      "modified_at_utc": "2026-07-07T22:56:15.276907+00:00"
     },
     {
       "path": "data/processed/forecast_data.pkl",
       "bytes": 222241,
       "sha256": "8ce6a96c6b7e1884ff53c52d0ab9ca6bff47b7f2032ef8b59391fb0221012aca",
-      "modified_at_utc": "2026-07-07T05:26:34.245257+00:00"
+      "modified_at_utc": "2026-07-07T05:17:33.301961+00:00"
     },
     {
       "path": "data/processed/cluster_brand_labels.csv",
       "bytes": 869477,
       "sha256": "30760a514d5e5d795b3823635f35db4c77a5892bcb8f6261bb482646f3cf1035",
-      "modified_at_utc": "2026-07-06T17:32:55.354784+00:00"
+      "modified_at_utc": "2026-07-01T00:09:06.395642+00:00"
     },
     {
       "path": "data/processed/target_cluster_ids.txt",
       "bytes": 854,
       "sha256": "e1315540bf380a026591d43f1bc69ef4a46c2dce5906be02543c54d1ffa0acd6",
-      "modified_at_utc": "2026-07-07T05:26:34.247062+00:00"
+      "modified_at_utc": "2026-07-07T05:17:33.195434+00:00"
     },
     {
       "path": "data/processed/archive/dashboard_weekly_archive.pkl",
       "bytes": 285846,
       "sha256": "052780370e6bdde9d6f3566102414fc8c583c82336e9ba62da3a6aa272ffcb38",
-      "modified_at_utc": "2026-07-07T05:26:34.169639+00:00"
+      "modified_at_utc": "2026-07-07T22:04:04.746515+00:00"
     },
     {
       "path": "data/processed/archive/dashboard_weekly_archive.csv",
       "bytes": 240877,
       "sha256": "f8269afd7d4aa9d726383870be567fe485612f81f6988b9f3dc5ecf63f33ebf3",
-      "modified_at_utc": "2026-07-07T05:26:34.157383+00:00"
+      "modified_at_utc": "2026-07-07T22:04:05.135037+00:00"
     }
   ],
   "streamlit_entrypoint": "dashboard_v2.py"
