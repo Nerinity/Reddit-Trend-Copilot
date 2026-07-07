@@ -221,12 +221,25 @@ div[data-testid="stMarkdownContainer"] li{
 div[data-testid="stButton"] button{
   width:100%;border:1px solid rgba(0,242,234,.42);border-radius:16px;
   background:linear-gradient(135deg,rgba(0,242,234,.18),rgba(255,0,80,.20)),#050711;
-  color:#FFFFFF;font-weight:850;padding:.82rem 1.1rem;
+  color:#FFFFFF;font-weight:900;padding:1.05rem 1.35rem;min-height:56px;font-size:1rem;
   box-shadow:0 16px 42px rgba(0,0,0,.28),0 0 28px rgba(0,242,234,.14);
 }
 div[data-testid="stButton"] button:hover{
   border-color:#00F2EA;color:#FFFFFF;background:linear-gradient(135deg,rgba(0,242,234,.28),rgba(255,0,80,.26)),#050711;
 }
+.wip-banner{
+  background:linear-gradient(135deg,rgba(255,0,80,.18),rgba(0,242,234,.10)),rgba(0,0,0,.72);
+  border:1px solid rgba(255,0,80,.52);border-radius:18px;
+  padding:16px 18px;margin-bottom:14px;
+  box-shadow:0 18px 48px rgba(0,0,0,.28),0 0 26px rgba(255,0,80,.16);
+}
+.wip-pill{
+  display:inline-flex;border:1px solid rgba(255,0,80,.70);border-radius:999px;
+  padding:3px 10px;margin-bottom:8px;background:rgba(255,0,80,.16);
+  color:#FFFFFF;font-size:.78rem;font-weight:900;letter-spacing:.08em;
+}
+.wip-banner .wip-title{font-size:1.08rem;font-weight:900;color:#FFFFFF;margin-bottom:4px;}
+.wip-banner .wip-copy{font-size:.9rem;font-weight:750;color:#D8F7F6;line-height:1.5;}
 @media(max-width:900px){.welcome-grid{grid-template-columns:1fr;}}
 hr{border-color:rgba(255,255,255,.10)!important;}
 h1,h2,h3,h4,h5,h6,p,span,div{letter-spacing:0;}
@@ -272,7 +285,7 @@ if not st.session_state.signal_radar_entered:
       </div>
     </div>
     """, unsafe_allow_html=True)
-    spacer_l, cta_col, spacer_r = st.columns([1.2, 1, 1.2])
+    spacer_l, cta_col, spacer_r = st.columns([1, 1.45, 1])
     with cta_col:
         if st.button("Enter Signal Radar", type="primary"):
             st.session_state.signal_radar_entered = True
@@ -341,6 +354,19 @@ def apply_dynamic_trend_direction(stats: pd.DataFrame) -> pd.DataFrame:
     out["dashboard_mentions_delta"] = delta
     return out
 
+def display_period_start(label: str, win: dict) -> pd.Timestamp:
+    return pd.Timestamp(win["cur_start"]) + pd.Timedelta(days=1)
+
+def display_period_label(label: str) -> str:
+    """Show non-overlapping inclusive dates for boundary-based weekly windows."""
+    try:
+        win = windows_data[label]["window"]
+    except Exception:
+        return label
+    start = display_period_start(label, win)
+    end = pd.Timestamp(win["cur_end"])
+    return f"{start.strftime('%m/%d')}–{end.strftime('%m/%d')}"
+
 all_data     = load_data()
 win_labels   = all_data["window_labels"]
 windows_data = all_data["windows"]
@@ -370,6 +396,7 @@ with nav_l:
         "时间周期 / Period",
         options=win_labels,
         index=default_window_index,
+        format_func=display_period_label,
         label_visibility="collapsed",
     )
 with nav_r:
@@ -394,14 +421,15 @@ stats_all      = apply_dynamic_trend_direction(stats_all)
 weekly_by_cat  = wd["weekly"]
 cat_brand_data = wd["cat_brand_data"]
 win            = wd["window"]
+selected_window_label = display_period_label(selected_window)
 
 rising_total    = (stats_all["trend_direction"] == "rising").sum()
 stable_total    = (stats_all["trend_direction"] == "stable").sum()
 declining_total = (stats_all["trend_direction"] == "declining").sum()
 total_mentions  = int(stats_all["current_mentions"].sum()) if "current_mentions" in stats_all else 0
-period_start_label  = win["cur_start"].strftime("%Y/%m/%d")
+period_start_label  = display_period_start(selected_window, win).strftime("%Y/%m/%d")
 period_end_label    = win["cur_end"].strftime("%Y/%m/%d")
-compare_start_label = win["prev_start"].strftime("%Y/%m/%d")
+compare_start_label = (pd.Timestamp(win["prev_start"]) + pd.Timedelta(days=1)).strftime("%Y/%m/%d")
 compare_end_label   = win["prev_end"].strftime("%Y/%m/%d")
 
 # ── KPI summary row ───────────────────────────────────────────────────────────
@@ -410,7 +438,7 @@ st.markdown(f"""
 <div class="trend-stat-grid">
   <div class="trend-stat">
     <div class="label">当前周期 Current Week</div>
-    <div class="value period">{selected_window}</div>
+    <div class="value period">{selected_window_label}</div>
     <div class="period-range">
       <div><span>开始 Start</span><strong>{period_start_label}</strong></div>
       <div><span>结束 End</span><strong>{period_end_label}</strong></div>
@@ -933,6 +961,20 @@ elif selected_view == "类目工作台 / Cluster Workbench":
 # VIEW 4 — 预测实验室 / Forecast Lab
 # ════════════════════════════════════════════════════════════════════════════
 elif selected_view == "预测实验室 / Forecast Lab":
+
+    st.markdown(
+        """
+        <div class="wip-banner">
+          <div class="wip-pill">WIP</div>
+          <div class="wip-title">模型训练中 / Model Training In Progress</div>
+          <div class="wip-copy">
+            当前 tab 仅作为预测效果展示，不作为最终数据或正式业务判断依据。
+            This page is a preview of the forecasting experience while the model is still being trained.
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown(
         '<div class="chart-caption">📌 <b>预测说明 Forecast</b>：'
