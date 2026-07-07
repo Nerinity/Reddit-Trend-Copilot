@@ -204,6 +204,52 @@ def main() -> None:
         "target_cluster":       assigned_names,
         "target_cluster_score": assigned_scores,
     })
+
+    # Step 4b: negative-keyword post-processing
+    # For clusters that have negative_keywords defined, veto any assigned post
+    # whose text matches one of those terms → force to unassigned.
+    neg_map: dict[str, list[str]] = {}
+    for _, row in taxonomy.iterrows():
+        neg_raw = str(row.get("negative_keywords", "") or "")
+        if neg_raw.strip():
+            terms = [t.strip().lower() for t in neg_raw.split("|") if t.strip()]
+            if terms:
+                neg_map[str(row["target_cluster_id"])] = terms
+
+    if neg_map:
+        cids_with_neg = set(neg_map.keys())
+        candidate_mask = result["target_cluster_id"].isin(cids_with_neg)
+        n_candidates = candidate_mask.sum()
+        log.info("Negative-keyword check: %d clusters with rules, %d candidate posts …",
+                 len(neg_map), n_candidates)
+
+        if n_candidates > 0:
+            # Load post text only for candidates (cheap: single column from parquet)
+            post_text_df = pd.read_parquet(
+                F_CLUSTER_PKL, columns=["mention_id", "ner_input"]
+            )
+            post_text_df["mention_id"] = post_text_df["mention_id"].astype(str)
+            post_text_df["_text_lower"] = post_text_df["ner_input"].fillna("").str.lower()
+
+            candidates = result[candidate_mask].merge(
+                post_text_df[["mention_id", "_text_lower"]], on="mention_id", how="left"
+            )
+
+            def _hits_neg(row_c: pd.Series) -> bool:
+                terms = neg_map.get(row_c["target_cluster_id"], [])
+                text  = row_c["_text_lower"] or ""
+                return any(t in text for t in terms)
+
+            veto_mask = candidates.apply(_hits_neg, axis=1)
+            veto_ids  = set(candidates.loc[veto_mask, "mention_id"])
+            log.info("Negative-keyword veto: %d posts overridden → unassigned", len(veto_ids))
+
+            if veto_ids:
+                veto_rows = result["mention_id"].isin(veto_ids)
+                result.loc[veto_rows, "target_cluster_id"]    = "C000"
+                result.loc[veto_rows, "target_cluster"]       = "unassigned"
+                result.loc[veto_rows, "target_cluster_score"] = 0.0
+
     result.to_parquet(F_ASSIGNMENTS, index=False)
     log.info("Assignments saved → %s  (%d rows)", F_ASSIGNMENTS, len(result))
 

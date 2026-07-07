@@ -57,6 +57,7 @@ from __future__ import annotations
 import logging
 import pickle
 import re
+import sys
 import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -68,10 +69,26 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("build_dashboard")
 
+# Context-first brand extraction (new pipeline)
+_SCRIPTS_DIR = Path(__file__).parent
+sys.path.insert(0, str(_SCRIPTS_DIR.parent))
+try:
+    from scripts.brand_context import (
+        load_category_terms,
+        build_brand_tables_ctx,
+    )
+    _CTX_BRAND_OK = True
+except Exception as _e:
+    log.warning("brand_context import failed (%s) — falling back to legacy pipeline", _e)
+    _CTX_BRAND_OK = False
+
 ROOT    = Path(__file__).parent.parent
 PARQUET = ROOT / "data" / "processed" / "nlp_clustered_500k.parquet"
 OUT_PKL = ROOT / "data" / "processed" / "dashboard_data_500k.pkl"
 BRAND_XLS = Path.home() / "Downloads" / "Brand List Available全域.xlsx"
+ARCHIVE_DIR = ROOT / "data" / "processed" / "archive"
+ARCHIVE_PKL = ARCHIVE_DIR / "dashboard_weekly_archive.pkl"
+ARCHIVE_CSV = ARCHIVE_DIR / "dashboard_weekly_archive.csv"
 
 # ── NLP package setup ─────────────────────────────────────────────────────────
 try:
@@ -597,11 +614,13 @@ def load_whitelist() -> dict[str, str]:
         if norm in PRODUCT_TERMS:
             continue
         # Reject single common English words not in KNOWN_BRANDS:
-        # wordfreq > 1e-4 means the word appears in everyday language too often
-        # to be reliably treated as a brand (e.g. "nap", "carrier", "toys").
+        # wordfreq > 5e-5 means the word appears in everyday language too often
+        # to be reliably treated as a brand (e.g. "camp", "mountain", "ring", "snow").
+        # Lowered from 1e-4: common activity/geography/descriptor words at 5e-6–1e-4
+        # were entering the whitelist and generating noise (Runner, Camp, Mountain, Miles).
         # KNOWN_BRANDS entries (apple, ring, on…) are exempt — they're real brands.
         if len(words) == 1 and norm not in KNOWN_BRANDS and _WORDFREQ_OK:
-            if _wfreq(norm) > 1e-4:
+            if _wfreq(norm) > 5e-5:
                 continue
 
         display = normalize_display(b)
@@ -745,19 +764,42 @@ def extract_brands_from_post(
         for i in range(len(tokens) - n + 1):
             gram = " ".join(tokens[i : i + n])
             key  = _norm(gram)
-            if key not in whitelist:
+            # Also try compact key: handles "Arc'teryx" → norm "arc teryx" ≠ whitelist "arcteryx"
+            key_compact = key.replace(" ", "")
+            if key in whitelist:
+                actual_key = key
+            elif key_compact != key and key_compact in whitelist:
+                actual_key = key_compact
+            else:
                 continue
             # Layer 7: hard reject even within whitelist
-            if key in PRODUCT_TERMS:
+            if actual_key in PRODUCT_TERMS:
                 continue
+            # Capitalization guard: single-word whitelist entries that appear lowercase in the
+            # original text are common English words (kitchen, destroyed, burn, desk, shower).
+            # Real brands appear capitalized mid-sentence (Salomon, CeraVe) or ALL_CAPS (BURN).
+            gram_words = gram.split()
+            if len(gram_words) == 1 and gram[0].islower() and actual_key not in KNOWN_BRANDS:
+                continue
+            # For multi-word phrases starting with a possessive pronoun (my, your, our, his, her,
+            # their), reject if the phrase appears at a sentence boundary — that's grammatical
+            # capitalization, not a brand name ("My Skin has been glowing" ≠ brand "My Skin").
+            # The same phrase mid-sentence with capital first letter IS a brand signal.
+            _POSSESSIVE = {"my", "your", "our", "his", "her", "their", "its"}
+            if len(gram_words) > 1 and gram_words[0].lower() in _POSSESSIVE:
+                pos = norm_text.find(gram)
+                if pos >= 0:
+                    pre = norm_text[:pos].rstrip()
+                    if not pre or pre[-1] in ".!?\n":
+                        continue
             # Layer 5: context window — anti-brand signal
             pos = norm_text.find(gram)
             ctx = text[max(0, pos - 60) : pos + len(gram) + 60] if pos >= 0 else ""
             if _ANTI_CTX_RE.search(ctx):
                 continue
-            display = whitelist[key]
-            if key not in matched:
-                matched[key] = BrandMatch(display, 1.0, "whitelist", "whitelist_match")
+            display = whitelist[actual_key]
+            if actual_key not in matched:
+                matched[actual_key] = BrandMatch(display, 1.0, "whitelist", "whitelist_match")
 
     # ── Layer 1.5: BRAND_ALIASES — spelling variants / lowercase aliases ──
     text_lower = norm_text.lower()
@@ -836,6 +878,33 @@ def extract_brands_from_post(
                 "context":    ctx[:120],
                 "community":  community,
             })
+
+    # Longest-match deduplication — two rules:
+    # 1. Prefix rule: "arc" is prefix of "arcteryx" → remove "arc" (tokenisation artifact).
+    # 2. Word-containment rule: if multi-gram "the ordinary" matched, remove 1-gram "ordinary"
+    #    because it is a content word inside the longer match.  Skip short function words
+    #    (len < 4) so "the", "of", "by" don't incorrectly suppress 1-gram brands.
+    if len(matched) > 1:
+        to_remove: set[str] = set()
+        matched_keys = list(matched.keys())
+        # Rule 1: prefix
+        for k1 in matched_keys:
+            for k2 in matched_keys:
+                if k1 != k2 and k2.startswith(k1) and len(k2) > len(k1):
+                    to_remove.add(k1)
+        # Rule 2: word containment in multi-gram
+        multi_keys = [k for k in matched_keys if " " in k]
+        if multi_keys:
+            multi_content_words: set[str] = set()
+            for mk in multi_keys:
+                for w in mk.split():
+                    if len(w) >= 4:   # skip "the", "of", "by", "and" etc.
+                        multi_content_words.add(w)
+            for k1 in matched_keys:
+                if k1 not in to_remove and " " not in k1 and k1 in multi_content_words:
+                    to_remove.add(k1)
+        for k in to_remove:
+            del matched[k]
 
     return list(matched.values())
 
@@ -977,35 +1046,84 @@ def main() -> None:
     log.info("Rows: %d", len(df))
 
     # Use target_cluster (171 TikTok Shop taxonomy) as primary dashboard dimension.
-    # Falls back to legacy subreddit-based category for posts not yet assigned.
+    # Posts scoring >= TC_MIN_SCORE get their matched cluster; the rest → "Other".
+    TC_MIN_SCORE = 0.10
     if "target_cluster" in df.columns:
+        score_col = df["target_cluster_score"] if "target_cluster_score" in df.columns else pd.Series(1.0, index=df.index)
         valid_mask = (
             df["target_cluster"].notna() &
-            ~df["target_cluster"].isin(["unassigned", "unknown", ""])
+            ~df["target_cluster"].isin(["unassigned", "unknown", ""]) &
+            (score_col >= TC_MIN_SCORE)
         )
-        df["category"] = df["category"].fillna("unknown")
+        df["category"] = "Other"
         df.loc[valid_mask, "category"] = df.loc[valid_mask, "target_cluster"]
         log.info("target_cluster taxonomy applied to %d / %d posts  (%.1f%%)",
                  valid_mask.sum(), len(df), 100 * valid_mask.sum() / len(df))
+        log.info("  Posts in 'Other' (score < %.2f): %d", TC_MIN_SCORE, (~valid_mask).sum())
     else:
         df["category"] = df["category"].fillna("unknown")
         log.info("target_cluster column not found — using legacy category labels. "
                  "Run scripts/assign_target_clusters.py to enable 171-cluster taxonomy.")
 
     latest  = df["published_at"].max()
+    archive_cutoff = latest - pd.Timedelta(days=28)
+
+    # Archive older-than-4-week history separately. The main dashboard payload stays
+    # lightweight and product-facing, while historical weekly facts remain available.
+    archive_df = df[df["published_at"] < archive_cutoff].copy()
+    if not archive_df.empty:
+        ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+        archive_df["week"] = archive_df["published_at"].dt.tz_convert(None).dt.to_period("W").dt.start_time
+        archive_weekly = (
+            archive_df.groupby(["category", "week"])
+            .agg(
+                mentions=("mention_id", "count"),
+                communities=("community", "nunique"),
+                mean_sentiment=("sentiment_compound", "mean"),
+                mean_engagement=("engagement_score", "mean"),
+            )
+            .reset_index()
+        )
+        archive_weekly["week"] = archive_weekly["week"].dt.strftime("%Y-%m-%d")
+        with open(ARCHIVE_PKL, "wb") as f:
+            pickle.dump(
+                {
+                    "archive_cutoff": archive_cutoff,
+                    "rows": len(archive_df),
+                    "weekly": archive_weekly,
+                },
+                f,
+            )
+        archive_weekly.to_csv(ARCHIVE_CSV, index=False)
+        log.info(
+            "Archived older history (< %s): %d rows, %d category-weeks → %s",
+            archive_cutoff.strftime("%Y-%m-%d"),
+            len(archive_df),
+            len(archive_weekly),
+            ARCHIVE_PKL,
+        )
+
     windows : dict[str, dict] = {}
     for i in range(4):
-        end        = latest - pd.Timedelta(days=14 * i)
-        start      = end    - pd.Timedelta(days=14)
+        end        = latest - pd.Timedelta(days=7 * i)
+        start      = end    - pd.Timedelta(days=7)
         prev_end   = start
-        prev_start = start  - pd.Timedelta(days=14)
+        prev_start = start  - pd.Timedelta(days=7)
         label = f"{start.strftime('%m/%d')}–{end.strftime('%m/%d')}"
         windows[label] = dict(
             cur_start=start, cur_end=end,
             prev_start=prev_start, prev_end=prev_end,
+            cadence="weekly",
         )
 
     whitelist = load_whitelist()
+
+    # Load category terms for context-first pipeline
+    if _CTX_BRAND_OK:
+        category_terms = load_category_terms()
+        log.info("Category terms loaded: %d", len(category_terms))
+    else:
+        category_terms = set()
 
     all_window_data: dict[str, dict] = {}
 
@@ -1069,8 +1187,13 @@ def main() -> None:
         })
         stats = stats.sort_values("trend_score", ascending=False).reset_index(drop=True)
 
-        # Brand extraction
-        cat_brand_data = build_brand_tables(df_cur, df_prev, whitelist)
+        # Brand extraction — use context-first pipeline when available
+        if _CTX_BRAND_OK and category_terms:
+            cat_brand_data = build_brand_tables_ctx(
+                df_cur, df_prev, whitelist, category_terms
+            )
+        else:
+            cat_brand_data = build_brand_tables(df_cur, df_prev, whitelist)
         stats["top_brands"] = stats["category"].map(
             lambda c: cat_brand_data.get(c, pd.DataFrame()).head(20)["brand"].tolist()
             if c in cat_brand_data else []
@@ -1082,7 +1205,7 @@ def main() -> None:
             (df["published_at"] <  win["cur_end"])
         ].copy()
         with pd.option_context("mode.chained_assignment", None):
-            df_win["week"] = df_win["published_at"].dt.to_period("W").dt.start_time
+            df_win["week"] = df_win["published_at"].dt.tz_convert(None).dt.to_period("W").dt.start_time
         weekly = (
             df_win.groupby(["category", "week"])
             .agg(mentions=("mention_id", "count"),

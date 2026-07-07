@@ -2,6 +2,8 @@
 data/processed/*.parquet
 data/processed/*.npy
 data/processed/embeddings_500k_ids.txt
+data/processed/hdbscan_model.pkl
+data/processed/*.bak_*.pkl
 data/raw/
 data/state/
 
