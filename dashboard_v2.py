@@ -64,6 +64,16 @@ DIR_ZH  = {"rising":"上升中","stable":"平稳","declining":"下降中"}
 DIR_EN  = {"rising":"Rising","stable":"Stable","declining":"Declining"}
 DIR_EMO = {"rising":"🟢","stable":"⚪","declining":"🔴"}
 
+TREND_THRESHOLDS = {
+    "min_current_mentions": 20,
+    "min_prior_mentions": 20,
+    "min_rise_abs_delta": 8,
+    "min_rise_relative_change": 0.12,
+    "min_decline_abs_delta": 30,
+    "min_decline_relative_change": 0.25,
+    "smoothing_mentions": 5,
+}
+
 def background_image_css() -> str:
     if not BG_PATH.exists():
         return "linear-gradient(135deg,#030711 0%,#090A16 50%,#120312 100%)"
@@ -76,7 +86,7 @@ APP_BG = background_image_css()
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-html,body,[class*="css"]{font-family:'Inter',system-ui,sans-serif;}
+html,body,[class*="css"]{font-family:'Inter',system-ui,sans-serif;color:#F8FAFC;font-weight:650;}
 .stApp{
   background-image:
     linear-gradient(180deg, rgba(1,4,12,.62), rgba(1,4,12,.82)),
@@ -106,7 +116,7 @@ div[data-testid="metric-container"]{
   border-radius:16px;padding:.9rem 1.1rem;
   box-shadow:0 18px 54px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08);
   backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
-div[data-testid="metric-container"] label{font-size:.75rem;color:#B7C3D7;}
+div[data-testid="metric-container"] label{font-size:.75rem;color:#FFFFFF;font-weight:800;}
 div[data-testid="stMetricValue"]{color:#F8FAFC;}
 div[data-testid="stMetricDelta"]{color:#D8F7F6;}
 .hero{
@@ -129,7 +139,7 @@ div[data-testid="stMetricDelta"]{color:#D8F7F6;}
   font-weight:800;color:#FFFFFF;letter-spacing:0;margin:0;line-height:.98;
   text-shadow:0 0 26px rgba(0,242,234,.25), 0 0 42px rgba(255,0,80,.16);
 }
-.hero-sub{font-size:1rem;color:#C9D7EA;margin:16px auto 0;line-height:1.55;max-width:760px;}
+.hero-sub{font-size:1rem;color:#FFFFFF;margin:16px auto 0;line-height:1.55;max-width:760px;font-weight:700;}
 .hero-kpis{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-top:18px;}
 .hero-kpi{
   background:rgba(8,13,28,.58);border:1px solid rgba(255,255,255,.12);
@@ -145,14 +155,14 @@ div[data-testid="stMetricDelta"]{color:#D8F7F6;}
   box-shadow:0 18px 54px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
   backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
 }
-.trend-stat .label{font-size:.78rem;color:#A8B5C9;font-weight:700;line-height:1.25;}
+.trend-stat .label{font-size:.78rem;color:#FFFFFF;font-weight:800;line-height:1.25;}
 .trend-stat .value{font-size:2.15rem;color:#F8FAFC;font-weight:800;margin-top:8px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .trend-stat .value.period{font-size:1.28rem;letter-spacing:0;overflow:visible;white-space:normal;line-height:1.16;}
 .trend-stat .delta{display:inline-block;margin-top:8px;font-size:.78rem;color:#D8F7F6;background:rgba(255,255,255,.06);border-radius:999px;padding:3px 8px;}
 @media(max-width:900px){.trend-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.trend-stat .value{font-size:1.8rem;}}
 .chart-caption{
-  font-size:.78rem;color:#C9D7EA;margin-bottom:.65rem;line-height:1.5;
-  padding:9px 12px;background:rgba(8,13,28,.58);border-left:3px solid #00F2EA;
+  font-size:.78rem;color:#FFFFFF;margin-bottom:.65rem;line-height:1.5;font-weight:750;
+  padding:9px 12px;background:rgba(0,0,0,.68);border-left:3px solid #00F2EA;
   border-radius:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
 .spike-card{
   background:linear-gradient(135deg,rgba(8,13,28,.72),rgba(18,11,28,.56));
@@ -167,7 +177,7 @@ div[data-testid="stMetricDelta"]{color:#D8F7F6;}
   box-shadow:0 18px 54px rgba(0,0,0,.28);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
 }
-.nav-title{font-size:.78rem;color:#B7C3D7;text-align:center;margin-bottom:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
+.nav-title{font-size:.78rem;color:#FFFFFF;text-align:center;margin-bottom:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
 section[data-testid="stSidebar"],div[data-testid="stSelectbox"] div[data-baseweb="select"]>div,
 div[data-testid="stMultiSelect"] div[data-baseweb="select"]>div{
   background:rgba(8,13,28,.72)!important;
@@ -177,11 +187,83 @@ div[data-testid="stMultiSelect"] div[data-baseweb="select"]>div{
 }
 div[data-baseweb="select"] span{color:#F8FAFC!important;}
 .stSlider label,.stSelectbox label,.stMultiSelect label{color:#D8F7F6!important;}
+div[data-testid="stMarkdownContainer"], div[data-testid="stMarkdownContainer"] p,
+div[data-testid="stMarkdownContainer"] li{
+  color:#FFFFFF!important;font-weight:700;
+}
+.welcome-panel{
+  max-width:980px;margin:22px auto 0;padding:24px 26px;border-radius:24px;
+  background:rgba(0,0,0,.72);border:1px solid rgba(0,242,234,.24);
+  box-shadow:0 24px 80px rgba(0,0,0,.42), 0 0 44px rgba(255,0,80,.10);
+  backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+}
+.welcome-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:18px;}
+.welcome-rule{
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;padding:14px 15px;min-height:132px;
+}
+.welcome-rule .rule-title{color:#FFFFFF;font-weight:850;font-size:.95rem;margin-bottom:8px;}
+.welcome-rule .rule-body{color:#D8F7F6;font-size:.82rem;line-height:1.5;font-weight:700;}
+div[data-testid="stButton"] button{
+  width:100%;border:1px solid rgba(0,242,234,.42);border-radius:16px;
+  background:linear-gradient(135deg,rgba(0,242,234,.18),rgba(255,0,80,.20)),#050711;
+  color:#FFFFFF;font-weight:850;padding:.82rem 1.1rem;
+  box-shadow:0 16px 42px rgba(0,0,0,.28),0 0 28px rgba(0,242,234,.14);
+}
+div[data-testid="stButton"] button:hover{
+  border-color:#00F2EA;color:#FFFFFF;background:linear-gradient(135deg,rgba(0,242,234,.28),rgba(255,0,80,.26)),#050711;
+}
+@media(max-width:900px){.welcome-grid{grid-template-columns:1fr;}}
 hr{border-color:rgba(255,255,255,.10)!important;}
 h1,h2,h3,h4,h5,h6,p,span,div{letter-spacing:0;}
 a{color:#00F2EA;}
 </style>
 """.replace("__APP_BG__", APP_BG), unsafe_allow_html=True)
+
+if "signal_radar_entered" not in st.session_state:
+    st.session_state.signal_radar_entered = False
+
+if not st.session_state.signal_radar_entered:
+    st.markdown("""
+    <div class="hero">
+      <div class="signal-badge">North America Consumer Trend Radar</div>
+      <div class="hero-title">North America<br>Consumer Signal Radar</div>
+      <div class="hero-sub">
+        Enter a weekly signal room for Reddit consumer discussion, product demand, keyword evidence,
+        and creator-commerce opportunity discovery.
+      </div>
+    </div>
+    <div class="welcome-panel">
+      <div style="font-size:1.35rem;font-weight:850;color:#FFFFFF;margin-bottom:8px">
+        How to read this radar
+      </div>
+      <div style="color:#D8F7F6;font-weight:750;line-height:1.55">
+        This dashboard reads recent Reddit discussions as market signals. It does not treat every mention
+        as a product recommendation. The goal is to find where discussion is growing, what people are naming,
+        and which clusters deserve deeper business review.
+      </div>
+      <div class="welcome-grid">
+        <div class="welcome-rule">
+          <div class="rule-title">1. Weekly signal window</div>
+          <div class="rule-body">Each period compares the selected week with the prior week. The homepage shows active clusters, rising/stable/declining counts, and total discussion volume.</div>
+        </div>
+        <div class="welcome-rule">
+          <div class="rule-title">2. Dynamic trend direction</div>
+          <div class="rule-body">Rising/falling labels are recalculated on page load using lightweight thresholds, so threshold changes do not rebuild the 500K-post pipeline.</div>
+        </div>
+        <div class="welcome-rule">
+          <div class="rule-title">3. Keyword evidence first</div>
+          <div class="rule-body">Keywords include brands, product nouns, trend phrases, and user concern objects. Use hot posts to inspect the original context before making decisions.</div>
+        </div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+    spacer_l, cta_col, spacer_r = st.columns([1.2, 1, 1.2])
+    with cta_col:
+        if st.button("Enter Signal Radar", type="primary"):
+            st.session_state.signal_radar_entered = True
+            st.rerun()
+    st.stop()
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 @st.cache_data
@@ -205,6 +287,45 @@ def load_posts_df():
     df = pd.read_parquet(PARQUET_PATH, columns=cols)
     df["published_at"] = pd.to_datetime(df["published_at"], utc=True, errors="coerce")
     return df
+
+def apply_dynamic_trend_direction(stats: pd.DataFrame) -> pd.DataFrame:
+    """Re-label trend direction at dashboard time without rebuilding source data."""
+    out = stats.copy()
+    if "current_mentions" not in out.columns:
+        return out
+
+    cur = pd.to_numeric(out["current_mentions"], errors="coerce").fillna(0)
+    if "previous_mentions" in out.columns:
+        prev = pd.to_numeric(out["previous_mentions"], errors="coerce").fillna(0)
+    elif "prev_mentions" in out.columns:
+        prev = pd.to_numeric(out["prev_mentions"], errors="coerce").fillna(0)
+    elif "mentions_delta" in out.columns:
+        prev = cur - pd.to_numeric(out["mentions_delta"], errors="coerce").fillna(0)
+        prev = prev.clip(lower=0)
+    else:
+        return out
+    delta = cur - prev
+    rel_change = delta / (prev + TREND_THRESHOLDS["smoothing_mentions"])
+
+    rising = (
+        (cur >= TREND_THRESHOLDS["min_current_mentions"])
+        & (delta >= TREND_THRESHOLDS["min_rise_abs_delta"])
+        & (rel_change >= TREND_THRESHOLDS["min_rise_relative_change"])
+    )
+    declining = (
+        (prev >= TREND_THRESHOLDS["min_prior_mentions"])
+        & (delta <= -TREND_THRESHOLDS["min_decline_abs_delta"])
+        & (rel_change <= -TREND_THRESHOLDS["min_decline_relative_change"])
+    )
+
+    out["trend_direction"] = np.select(
+        [rising, declining],
+        ["rising", "declining"],
+        default="stable",
+    )
+    out["dashboard_relative_change"] = rel_change
+    out["dashboard_mentions_delta"] = delta
+    return out
 
 all_data     = load_data()
 win_labels   = all_data["window_labels"]
@@ -250,6 +371,7 @@ st.markdown('</div>', unsafe_allow_html=True)
 wd             = windows_data[selected_window]
 stats_all      = wd["stats"]
 stats_all      = stats_all[stats_all["category"] != "Other"].copy()
+stats_all      = apply_dynamic_trend_direction(stats_all)
 weekly_by_cat  = wd["weekly"]
 cat_brand_data = wd["cat_brand_data"]
 win            = wd["window"]
@@ -296,7 +418,11 @@ st.markdown(f"""
 st.markdown(
     f"<div class='chart-caption' style='margin-top:6px'>"
     f"<b>本期讨论量</b> {total_mentions:,} 条帖子 · 对比区间 {compare_label} · "
-    "关键词包含品牌、产品词、趋势词和用户关心的具体对象</div>",
+    "关键词包含品牌、产品词、趋势词和用户关心的具体对象<br>"
+    f"<b>动态阈值</b> Rising = 本周≥{TREND_THRESHOLDS['min_current_mentions']} 且 环比≥+{TREND_THRESHOLDS['min_rise_abs_delta']} "
+    f"且 相对增长≥{TREND_THRESHOLDS['min_rise_relative_change']:.0%}；"
+    f"Declining = 上周≥{TREND_THRESHOLDS['min_prior_mentions']} 且 环比≤-{TREND_THRESHOLDS['min_decline_abs_delta']} "
+    f"且 相对下降≤-{TREND_THRESHOLDS['min_decline_relative_change']:.0%}；其他为 Stable。</div>",
     unsafe_allow_html=True,
 )
 
@@ -330,9 +456,7 @@ if selected_view == "趋势总览 / Trend Command Center":
     top_stats["cat_label"]   = top_stats["category"].apply(cat_label)
     top_stats["spike_label"] = top_stats["spike_ratio"].apply(lambda x: f"{x:.1f}x")
 
-    g1, g2 = st.columns([5, 4])
-
-    with g1:
+    with st.container():
         st.markdown(
             '<div class="chart-caption">📌 <b>综合趋势分 Trend Score</b> = '
             '本周增长（25%）+ 跨社区扩散（25%）+ 用户好感度（25%）+ 互动参与（25%），四维等权。'
@@ -372,7 +496,7 @@ if selected_view == "趋势总览 / Trend Command Center":
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
-    with g2:
+    with st.container():
         st.markdown(
             '<div class="chart-caption">📌 <b>热度 × 扩散象限图 Spike × Reach</b>：'
             '横轴 = 本周热度增长强度，纵轴 = 跨社区扩散广度，气泡大小 = 帖子量。右上角为核心机会区。<br>'
