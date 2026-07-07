@@ -237,7 +237,9 @@ def main() -> None:
 
             def _hits_neg(row_c: pd.Series) -> bool:
                 terms = neg_map.get(row_c["target_cluster_id"], [])
-                text  = row_c["_text_lower"] or ""
+                text = row_c.get("_text_lower", "")
+                if not isinstance(text, str):
+                    text = ""
                 return any(t in text for t in terms)
 
             veto_mask = candidates.apply(_hits_neg, axis=1)

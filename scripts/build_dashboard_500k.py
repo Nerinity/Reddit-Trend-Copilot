@@ -55,6 +55,7 @@ Output columns per brand
 """
 from __future__ import annotations
 import logging
+import os
 import pickle
 import re
 import sys
@@ -1125,9 +1126,21 @@ def main() -> None:
     else:
         category_terms = set()
 
-    all_window_data: dict[str, dict] = {}
+    latest_only = os.getenv("DASHBOARD_UPDATE_LATEST_ONLY", "").lower() in {
+        "1", "true", "yes", "y"
+    }
+    existing_payload: dict | None = None
+    if latest_only and OUT_PKL.exists():
+        with open(OUT_PKL, "rb") as f:
+            existing_payload = pickle.load(f)
+        all_window_data: dict[str, dict] = dict(existing_payload.get("windows", {}))
+        window_items = list(windows.items())[:1]
+        log.info("Latest-only mode: rebuilding %s and reusing existing older windows", window_items[0][0])
+    else:
+        all_window_data = {}
+        window_items = list(windows.items())
 
-    for win_label, win in windows.items():
+    for win_label, win in window_items:
         log.info("=== Window: %s ===", win_label)
         df_cur  = df[(df["published_at"] >= win["cur_start"])  & (df["published_at"] < win["cur_end"])]
         df_prev = df[(df["published_at"] >= win["prev_start"]) & (df["published_at"] < win["prev_end"])]
@@ -1231,7 +1244,20 @@ def main() -> None:
             "window":         win,
         }
 
-    payload = {"windows": all_window_data, "window_labels": list(windows.keys())}
+    if latest_only and existing_payload:
+        labels: list[str] = []
+        latest_label = list(windows.keys())[0]
+        if latest_label in all_window_data:
+            labels.append(latest_label)
+        for label in existing_payload.get("window_labels", []):
+            if label not in labels and label in all_window_data:
+                labels.append(label)
+        for label in windows.keys():
+            if label not in labels and label in all_window_data:
+                labels.append(label)
+        payload = {"windows": all_window_data, "window_labels": labels}
+    else:
+        payload = {"windows": all_window_data, "window_labels": list(windows.keys())}
     with open(OUT_PKL, "wb") as f:
         pickle.dump(payload, f)
     log.info("Saved → %s", OUT_PKL)
