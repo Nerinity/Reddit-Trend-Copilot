@@ -119,6 +119,23 @@ python scripts/scheduled_pipeline.py daily-scrape
 python scripts/scheduled_pipeline.py weekly-publish --push
 ```
 
+如果 raw/parquet/embedding 大文件在本地版目录，而不是 GitHub repo 目录，使用：
+
+```bash
+python scripts/scheduled_pipeline.py weekly-publish --push \
+  --data-workspace "/Users/bytedance/Desktop/Onboarding Assistance/TrendCopilot_本地版/代码"
+```
+
+这会在本地版目录里运行重型 pipeline，然后只把分享版需要的小文件同步回 GitHub repo：
+
+```text
+dashboard_data_500k.pkl
+brand_posts_index.pkl
+forecast_data.pkl
+cluster_brand_labels.csv
+target_cluster_ids.txt
+```
+
 在本机安装 crontab：
 
 ```bash

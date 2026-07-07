@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -22,19 +24,22 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RAW_CSV = ROOT / "data" / "raw" / "scraped_2026_large.csv"
 STATE_DIR = ROOT / "data" / "state"
 LOG_DIR = ROOT / "data" / "logs"
 LOCK_FILE = STATE_DIR / "scheduled_pipeline.lock"
 STATE_FILE = STATE_DIR / "scheduled_pipeline_state.json"
 
-SCRAPE_SCRIPT = ROOT / "scripts" / "scrape_large_2026.py"
-INCREMENTAL_SCRIPT = ROOT / "scripts" / "incremental_update.py"
-DASHBOARD_SCRIPT = ROOT / "scripts" / "build_dashboard_500k.py"
-FORECAST_SCRIPT = ROOT / "scripts" / "build_forecast.py"
 PUBLISH_SCRIPT = ROOT / "scripts" / "publish_streamlit_snapshot.py"
 
 DEFAULT_DAILY_SOURCES = "reddit_json,rss,gnews,hn"
+DEFAULT_DATA_WORKSPACE = Path(os.environ.get("TREND_DATA_WORKSPACE", ROOT)).expanduser()
+STREAMLIT_ARTIFACTS = [
+    "dashboard_data_500k.pkl",
+    "brand_posts_index.pkl",
+    "forecast_data.pkl",
+    "cluster_brand_labels.csv",
+    "target_cluster_ids.txt",
+]
 
 
 def setup_logging(command: str) -> Path:
@@ -66,23 +71,68 @@ def pipeline_lock():
         LOCK_FILE.unlink(missing_ok=True)
 
 
-def run(cmd: list[str], label: str) -> None:
+def run(cmd: list[str], label: str, cwd: Path = ROOT) -> None:
     log.info("▶ %s", label)
     log.info("  %s", " ".join(cmd))
     t0 = time.time()
-    result = subprocess.run(cmd, cwd=ROOT)
+    result = subprocess.run(cmd, cwd=cwd)
     if result.returncode != 0:
         raise SystemExit(f"{label} failed with exit code {result.returncode}")
     log.info("✓ %s done in %.1f min", label, (time.time() - t0) / 60)
 
 
-def count_raw_rows() -> int:
-    if not RAW_CSV.exists():
+def workspace_path(args: argparse.Namespace) -> Path:
+    return Path(args.data_workspace).expanduser().resolve()
+
+
+def script_path(workspace: Path, script_name: str) -> Path:
+    path = workspace / "scripts" / script_name
+    if not path.exists():
+        raise FileNotFoundError(f"Missing script in data workspace: {path}")
+    return path
+
+
+def raw_csv_path(workspace: Path) -> Path:
+    return workspace / "data" / "raw" / "scraped_2026_large.csv"
+
+
+def count_raw_rows(workspace: Path) -> int:
+    raw_csv = raw_csv_path(workspace)
+    if not raw_csv.exists():
         return 0
     try:
-        return len(pd.read_csv(RAW_CSV, usecols=["mention_id"], low_memory=False))
+        return len(pd.read_csv(raw_csv, usecols=["mention_id"], low_memory=False))
     except Exception:
         return 0
+
+
+def sync_streamlit_artifacts(workspace: Path) -> None:
+    src_dir = workspace / "data" / "processed"
+    dst_dir = ROOT / "data" / "processed"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+
+    missing = []
+    for name in STREAMLIT_ARTIFACTS:
+        src = src_dir / name
+        if not src.exists():
+            if name in {"dashboard_data_500k.pkl", "brand_posts_index.pkl"}:
+                missing.append(str(src))
+            continue
+        shutil.copy2(src, dst_dir / name)
+
+    archive_src = src_dir / "archive"
+    archive_dst = dst_dir / "archive"
+    if archive_src.exists():
+        archive_dst.mkdir(parents=True, exist_ok=True)
+        for name in ["dashboard_weekly_archive.pkl", "dashboard_weekly_archive.csv"]:
+            src = archive_src / name
+            if src.exists():
+                shutil.copy2(src, archive_dst / name)
+
+    if missing:
+        raise FileNotFoundError("Missing required Streamlit artifacts: " + ", ".join(missing))
+
+    log.info("Synced Streamlit artifacts from %s → %s", src_dir, dst_dir)
 
 
 def date_window(days_back: int) -> tuple[str, str]:
@@ -103,14 +153,16 @@ def write_state(command: str, status: str, extra: dict | None = None) -> None:
 
 
 def daily_scrape(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args)
     start, end = date_window(args.days_back)
-    current_rows = count_raw_rows()
+    current_rows = count_raw_rows(workspace)
     target = current_rows + args.daily_target
+    scrape_script = script_path(workspace, "scrape_large_2026.py")
 
     run(
         [
             sys.executable,
-            str(SCRAPE_SCRIPT),
+            str(scrape_script),
             "--start",
             start,
             "--end",
@@ -125,6 +177,7 @@ def daily_scrape(args: argparse.Namespace) -> None:
             str(args.delay),
         ],
         f"daily scrape ({start} → {end})",
+        cwd=workspace,
     )
 
     write_state(
@@ -133,21 +186,37 @@ def daily_scrape(args: argparse.Namespace) -> None:
         {
             "start": start,
             "end": end,
+            "data_workspace": str(workspace),
             "raw_rows_before": current_rows,
-            "raw_rows_after": count_raw_rows(),
+            "raw_rows_after": count_raw_rows(workspace),
         },
     )
 
 
 def weekly_publish(args: argparse.Namespace) -> None:
+    workspace = workspace_path(args)
     if not args.skip_scrape:
         daily_scrape(args)
 
-    run([sys.executable, str(INCREMENTAL_SCRIPT), "--skip-dashboard"], "incremental NLP update")
-    run([sys.executable, str(DASHBOARD_SCRIPT)], "weekly dashboard build")
+    run(
+        [sys.executable, str(script_path(workspace, "incremental_update.py")), "--skip-dashboard"],
+        "incremental NLP update",
+        cwd=workspace,
+    )
+    run(
+        [sys.executable, str(script_path(workspace, "build_dashboard_500k.py"))],
+        "weekly dashboard build",
+        cwd=workspace,
+    )
 
     if not args.skip_forecast:
-        run([sys.executable, str(FORECAST_SCRIPT)], "forecast build")
+        run(
+            [sys.executable, str(script_path(workspace, "build_forecast.py"))],
+            "forecast build",
+            cwd=workspace,
+        )
+
+    sync_streamlit_artifacts(workspace)
 
     publish_cmd = [sys.executable, str(PUBLISH_SCRIPT), "--commit"]
     if args.push:
@@ -158,6 +227,7 @@ def weekly_publish(args: argparse.Namespace) -> None:
         "weekly-publish",
         "success",
         {
+            "data_workspace": str(workspace),
             "pushed_to_github": bool(args.push),
             "forecast_updated": not args.skip_forecast,
         },
@@ -169,6 +239,8 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     daily = sub.add_parser("daily-scrape", help="Collect new raw data only.")
+    daily.add_argument("--data-workspace", default=str(DEFAULT_DATA_WORKSPACE),
+                       help="Workspace containing raw/parquet/embedding files.")
     daily.add_argument("--days-back", type=int, default=2, help="UTC lookback window for daily collection.")
     daily.add_argument("--daily-target", type=int, default=50_000, help="Additional raw rows to attempt per run.")
     daily.add_argument("--sources", default=DEFAULT_DAILY_SOURCES, help="Sources for scrape_large_2026.py.")
@@ -176,6 +248,8 @@ def main() -> None:
     daily.add_argument("--delay", type=float, default=1.5, help="Request delay in seconds.")
 
     weekly = sub.add_parser("weekly-publish", help="Update NLP/dashboard and publish Streamlit artifacts.")
+    weekly.add_argument("--data-workspace", default=str(DEFAULT_DATA_WORKSPACE),
+                        help="Workspace containing raw/parquet/embedding files.")
     weekly.add_argument("--days-back", type=int, default=3, help="UTC lookback window before weekly build.")
     weekly.add_argument("--daily-target", type=int, default=75_000, help="Additional raw rows to attempt before build.")
     weekly.add_argument("--sources", default=DEFAULT_DAILY_SOURCES, help="Sources for scrape_large_2026.py.")
