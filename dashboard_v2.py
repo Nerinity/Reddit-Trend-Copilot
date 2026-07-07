@@ -173,17 +173,23 @@ div[data-testid="stMetricDelta"]{color:#D8F7F6;}
 .nav-shell{
   max-width:760px;margin:0 auto 18px;padding:14px 16px;
   background:linear-gradient(135deg,rgba(6,10,24,.66),rgba(14,16,34,.46));
-  border:1px solid rgba(255,255,255,.12);border-radius:18px;
-  box-shadow:0 18px 54px rgba(0,0,0,.28);
+  border:1px solid rgba(255,0,80,.42);border-radius:18px;
+  box-shadow:0 18px 54px rgba(0,0,0,.28),0 0 28px rgba(255,0,80,.16);
   backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
 }
 .nav-title{font-size:.78rem;color:#FFFFFF;text-align:center;margin-bottom:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;}
 section[data-testid="stSidebar"],div[data-testid="stSelectbox"] div[data-baseweb="select"]>div,
 div[data-testid="stMultiSelect"] div[data-baseweb="select"]>div{
   background:rgba(8,13,28,.72)!important;
-  border-color:rgba(0,242,234,.25)!important;
+  border:1.5px solid rgba(255,0,80,.62)!important;
   border-radius:14px!important;
   color:#F8FAFC!important;
+  box-shadow:0 0 0 1px rgba(255,0,80,.16),0 0 22px rgba(255,0,80,.16)!important;
+}
+div[data-testid="stSelectbox"] div[data-baseweb="select"]>div:hover,
+div[data-testid="stMultiSelect"] div[data-baseweb="select"]>div:hover{
+  border-color:#FF0050!important;
+  box-shadow:0 0 0 1px rgba(255,0,80,.45),0 0 30px rgba(255,0,80,.26)!important;
 }
 div[data-baseweb="select"] span{color:#F8FAFC!important;}
 .stSlider label,.stSelectbox label,.stMultiSelect label{color:#D8F7F6!important;}
