@@ -1142,7 +1142,16 @@ def main() -> None:
                  .merge(prev_s, on="category", how="left")
                  .fillna(0))
 
+        cur_total = max(len(df_cur), 1)
+        prev_total = max(len(df_prev), 1)
+        n_cats = max(len(stats), 1)
+
         stats["spike_ratio"]       = (stats["mentions_c"] / stats["mentions_p"].replace(0, 1)).round(3)
+        # Smoothed share ratio corrects for weeks where total Reddit volume is
+        # unusually high/low, so a category only rises if it gains share.
+        stats["current_share"]     = ((stats["mentions_c"] + 1) / (cur_total + n_cats)).round(6)
+        stats["previous_share"]    = ((stats["mentions_p"] + 1) / (prev_total + n_cats)).round(6)
+        stats["share_ratio"]       = (stats["current_share"] / stats["previous_share"].replace(0, 1 / (prev_total + n_cats))).round(3)
         max_spike                  = stats["spike_ratio"].replace([np.inf, -np.inf], 0).quantile(0.97)
         stats["normalized_spike"]  = (stats["spike_ratio"].clip(upper=max_spike) / max(max_spike, 1)).round(4)
         max_comm                   = stats["communities_c"].max()
@@ -1164,16 +1173,48 @@ def main() -> None:
         ).round(4)
 
         stats["mentions_delta"] = (stats["mentions_c"] - stats["mentions_p"]).astype(int)
+        stats["community_delta"] = (stats["communities_c"] - stats["communities_p"]).astype(int)
+        stats["log_growth"] = (
+            np.log1p(stats["mentions_c"]) - np.log1p(stats["mentions_p"])
+        ).round(4)
+        stats["growth_z"] = (
+            stats["mentions_delta"] / np.sqrt(stats["mentions_c"] + stats["mentions_p"] + 1)
+        ).round(4)
+
+        direction_thresholds = {
+            "rising": {
+                "min_current_mentions": 25,
+                "min_delta": "max(10, 20% of previous mentions)",
+                "min_share_ratio": 1.35,
+                "min_log_growth": round(float(np.log(1.30)), 4),
+                "min_growth_z": 2.0,
+                "min_current_communities": 3,
+            },
+            "declining": {
+                "min_previous_mentions": 25,
+                "max_delta": "-max(10, 20% of previous mentions)",
+                "max_share_ratio": 0.75,
+                "max_log_growth": round(float(np.log(0.80)), 4),
+                "max_growth_z": -2.0,
+            },
+        }
 
         def _classify_direction(row: pd.Series) -> str:
-            if (row["mentions_c"]    >= 50 and
-                row["mentions_delta"] >= 50 and
-                row["spike_ratio"]   >= 1.6 and
-                row["communities_c"] >= 3):
+            rising_delta_floor = max(10, 0.20 * row["mentions_p"])
+            declining_delta_floor = max(10, 0.20 * row["mentions_p"])
+
+            if (row["mentions_c"]     >= 25 and
+                row["mentions_delta"] >= rising_delta_floor and
+                row["share_ratio"]    >= 1.35 and
+                row["log_growth"]     >= np.log(1.30) and
+                row["growth_z"]       >= 2.0 and
+                row["communities_c"]  >= 3):
                 return "rising"
-            if (row["mentions_p"]    >= 50 and
-                row["mentions_delta"] <= -25 and
-                row["spike_ratio"]   <= 0.8):
+            if (row["mentions_p"]     >= 25 and
+                row["mentions_delta"] <= -declining_delta_floor and
+                row["share_ratio"]    <= 0.75 and
+                row["log_growth"]     <= np.log(0.80) and
+                row["growth_z"]       <= -2.0):
                 return "declining"
             return "stable"
 
@@ -1229,6 +1270,7 @@ def main() -> None:
             "weekly":         weekly,
             "cat_brand_data": cat_brand_data,
             "window":         win,
+            "direction_thresholds": direction_thresholds,
         }
 
     payload = {"windows": all_window_data, "window_labels": list(windows.keys())}
