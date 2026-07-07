@@ -4,6 +4,7 @@ Reddit Trend Intelligence Copilot — Dashboard v2
 Workflow: Trend Command Center | Spike Radar | Cluster Workbench | Forecast Lab
 """
 import pickle
+import base64
 from pathlib import Path
 
 import numpy as np
@@ -23,6 +24,7 @@ DATA_PATH        = Path(__file__).parent / "data" / "processed" / "dashboard_dat
 FORECAST_PATH    = Path(__file__).parent / "data" / "processed" / "forecast_data.pkl"
 PARQUET_PATH     = Path(__file__).parent / "data" / "processed" / "nlp_clustered_500k.parquet"
 BRAND_POSTS_PATH = Path(__file__).parent / "data" / "processed" / "brand_posts_index.pkl"
+BG_PATH          = Path(__file__).parent / "assets" / "tiktok_neon_bg.png"
 
 US_HOLIDAYS = {
     "2025-12-25": "🎄 Christmas",
@@ -52,15 +54,23 @@ TIKTOK_EVENTS = [
 ]
 
 COLORS = {
-    "rising":   "#22C55E",
+    "rising":   "#00F2A9",
     "stable":   "#94A3B8",
-    "declining":"#EF4444",
-    "primary":  "#2563EB",
+    "declining":"#FF0050",
+    "primary":  "#00F2EA",
 }
 
 DIR_ZH  = {"rising":"上升中","stable":"平稳","declining":"下降中"}
 DIR_EN  = {"rising":"Rising","stable":"Stable","declining":"Declining"}
 DIR_EMO = {"rising":"🟢","stable":"⚪","declining":"🔴"}
+
+def background_image_css() -> str:
+    if not BG_PATH.exists():
+        return "linear-gradient(135deg,#030711 0%,#090A16 50%,#120312 100%)"
+    encoded = base64.b64encode(BG_PATH.read_bytes()).decode("utf-8")
+    return f"url('data:image/png;base64,{encoded}')"
+
+APP_BG = background_image_css()
 
 # ── CSS ───────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -68,60 +78,110 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 html,body,[class*="css"]{font-family:'Inter',system-ui,sans-serif;}
 .stApp{
-  background:
-    radial-gradient(circle at 18% 12%, rgba(255,0,102,.12), transparent 28%),
-    radial-gradient(circle at 88% 4%, rgba(0,210,255,.14), transparent 32%),
-    radial-gradient(circle at 72% 88%, rgba(132,92,255,.12), transparent 30%),
-    linear-gradient(135deg,#fff7fb 0%,#f8fbff 45%,#f7fff9 100%);
+  background-image:
+    linear-gradient(180deg, rgba(1,4,12,.62), rgba(1,4,12,.82)),
+    radial-gradient(circle at 18% 18%, rgba(0,242,234,.18), transparent 28%),
+    radial-gradient(circle at 84% 22%, rgba(255,0,80,.18), transparent 31%),
+    __APP_BG__;
+  background-size:cover;
+  background-position:center;
+  background-attachment:fixed;
+  color:#F8FAFC;
 }
 .stApp:before{
   content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
   background-image:
-    linear-gradient(rgba(15,23,42,.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15,23,42,.045) 1px, transparent 1px);
-  background-size:32px 32px;
-  mask-image:linear-gradient(to bottom,rgba(0,0,0,.55),rgba(0,0,0,.08));
+    linear-gradient(rgba(0,242,234,.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,0,80,.055) 1px, transparent 1px);
+  background-size:34px 34px;
+  mask-image:linear-gradient(to bottom,rgba(0,0,0,.38),rgba(0,0,0,.04));
 }
 .block-container{padding-top:1rem;padding-bottom:2rem;max-width:1480px;position:relative;z-index:1;}
+#MainMenu, footer, header[data-testid="stHeader"], div[data-testid="stToolbar"]{
+  display:none!important;visibility:hidden!important;height:0!important;
+}
 div[data-testid="metric-container"]{
-  background:rgba(255,255,255,.64);border:1px solid rgba(255,255,255,.72);
+  background:linear-gradient(135deg,rgba(8,13,28,.74),rgba(13,17,35,.52));
+  border:1px solid rgba(0,242,234,.22);
   border-radius:16px;padding:.9rem 1.1rem;
-  box-shadow:0 16px 42px rgba(15,23,42,.08);
+  box-shadow:0 18px 54px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08);
   backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
-div[data-testid="metric-container"] label{font-size:.75rem;color:#6B7280;}
+div[data-testid="metric-container"] label{font-size:.75rem;color:#B7C3D7;}
+div[data-testid="stMetricValue"]{color:#F8FAFC;}
+div[data-testid="stMetricDelta"]{color:#D8F7F6;}
 .hero{
-  border:1px solid rgba(255,255,255,.70);
-  border-radius:24px;padding:24px 26px;margin-bottom:18px;
-  background:linear-gradient(135deg,rgba(255,255,255,.78),rgba(255,255,255,.48));
-  box-shadow:0 24px 70px rgba(15,23,42,.11);
+  text-align:center;
+  border:1px solid rgba(0,242,234,.24);
+  border-radius:28px;padding:34px 30px 28px;margin:6px auto 18px;
+  background:linear-gradient(135deg,rgba(4,10,24,.54),rgba(15,7,24,.36));
+  box-shadow:0 24px 80px rgba(0,0,0,.38), 0 0 42px rgba(0,242,234,.10);
   backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
 }
-.hero-title{font-size:2.05rem;font-weight:760;color:#111827;letter-spacing:0;margin:0;}
-.hero-sub{font-size:.94rem;color:#475569;margin-top:6px;line-height:1.5;}
+.signal-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,0,80,.34);border-radius:999px;
+  padding:5px 12px;margin-bottom:14px;
+  color:#D8F7F6;background:rgba(255,0,80,.08);
+  font-size:.76rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+}
+.hero-title{
+  font-size:clamp(2.25rem,4.8vw,5.25rem);
+  font-weight:800;color:#FFFFFF;letter-spacing:0;margin:0;line-height:.98;
+  text-shadow:0 0 26px rgba(0,242,234,.25), 0 0 42px rgba(255,0,80,.16);
+}
+.hero-sub{font-size:1rem;color:#C9D7EA;margin:16px auto 0;line-height:1.55;max-width:760px;}
 .hero-kpis{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-top:18px;}
 .hero-kpi{
-  background:rgba(255,255,255,.58);border:1px solid rgba(255,255,255,.78);
+  background:rgba(8,13,28,.58);border:1px solid rgba(255,255,255,.12);
   border-radius:16px;padding:12px 14px;min-height:82px;
 }
-.hero-kpi .label{font-size:.72rem;color:#64748B;font-weight:650;text-transform:uppercase;letter-spacing:.02em;}
-.hero-kpi .value{font-size:1.55rem;color:#0F172A;font-weight:760;margin-top:4px;}
+.hero-kpi .label{font-size:.72rem;color:#A8B5C9;font-weight:650;text-transform:uppercase;letter-spacing:.02em;}
+.hero-kpi .value{font-size:1.55rem;color:#F8FAFC;font-weight:760;margin-top:4px;}
+.trend-stat-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin:18px 0 10px;}
+.trend-stat{
+  min-height:104px;padding:16px 18px;border-radius:18px;
+  background:linear-gradient(135deg,rgba(8,13,28,.74),rgba(13,17,35,.52));
+  border:1px solid rgba(0,242,234,.18);
+  box-shadow:0 18px 54px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+}
+.trend-stat .label{font-size:.78rem;color:#A8B5C9;font-weight:700;line-height:1.25;}
+.trend-stat .value{font-size:2.15rem;color:#F8FAFC;font-weight:800;margin-top:8px;line-height:1.05;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.trend-stat .value.period{font-size:1.28rem;letter-spacing:0;overflow:visible;white-space:normal;line-height:1.16;}
+.trend-stat .delta{display:inline-block;margin-top:8px;font-size:.78rem;color:#D8F7F6;background:rgba(255,255,255,.06);border-radius:999px;padding:3px 8px;}
+@media(max-width:900px){.trend-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.trend-stat .value{font-size:1.8rem;}}
 .chart-caption{
-  font-size:.78rem;color:#475569;margin-bottom:.65rem;line-height:1.5;
-  padding:9px 12px;background:rgba(255,255,255,.58);border-left:3px solid #2563EB;
+  font-size:.78rem;color:#C9D7EA;margin-bottom:.65rem;line-height:1.5;
+  padding:9px 12px;background:rgba(8,13,28,.58);border-left:3px solid #00F2EA;
   border-radius:12px;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
 .spike-card{
-  background:rgba(255,255,255,.62);border:1px solid rgba(255,255,255,.76);border-radius:18px;
+  background:linear-gradient(135deg,rgba(8,13,28,.72),rgba(18,11,28,.56));
+  border:1px solid rgba(0,242,234,.20);border-radius:18px;
   padding:1rem 1.2rem;margin-bottom:.8rem;
-  box-shadow:0 18px 50px rgba(15,23,42,.10);
+  box-shadow:0 18px 50px rgba(0,0,0,.26);
   backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}
+.nav-shell{
+  max-width:760px;margin:0 auto 18px;padding:14px 16px;
+  background:linear-gradient(135deg,rgba(6,10,24,.66),rgba(14,16,34,.46));
+  border:1px solid rgba(255,255,255,.12);border-radius:18px;
+  box-shadow:0 18px 54px rgba(0,0,0,.28);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+}
+.nav-title{font-size:.78rem;color:#B7C3D7;text-align:center;margin-bottom:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;}
 section[data-testid="stSidebar"],div[data-testid="stSelectbox"] div[data-baseweb="select"]>div,
 div[data-testid="stMultiSelect"] div[data-baseweb="select"]>div{
-  background:rgba(255,255,255,.72)!important;
-  border-color:rgba(255,255,255,.80)!important;
+  background:rgba(8,13,28,.72)!important;
+  border-color:rgba(0,242,234,.25)!important;
   border-radius:14px!important;
+  color:#F8FAFC!important;
 }
+div[data-baseweb="select"] span{color:#F8FAFC!important;}
+.stSlider label,.stSelectbox label,.stMultiSelect label{color:#D8F7F6!important;}
+hr{border-color:rgba(255,255,255,.10)!important;}
+h1,h2,h3,h4,h5,h6,p,span,div{letter-spacing:0;}
+a{color:#00F2EA;}
 </style>
-""", unsafe_allow_html=True)
+""".replace("__APP_BG__", APP_BG), unsafe_allow_html=True)
 
 # ── Load data ─────────────────────────────────────────────────────────────────
 @st.cache_data
@@ -150,36 +210,31 @@ all_data     = load_data()
 win_labels   = all_data["window_labels"]
 windows_data = all_data["windows"]
 
-# ── Static hero header (no data needed) ───────────────────────────────────────
+# ── Signal Radar welcome header ───────────────────────────────────────────────
 st.markdown("""
 <div class="hero">
-  <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap">
-    <div>
-      <div class="hero-title">Reddit Trend Intelligence Copilot</div>
-      <div class="hero-sub">
-        Weekly consumer signal radar for product opportunities, trend movement, and keyword evidence.<br>
-        每周消费趋势信号雷达，追踪类目升降、讨论热点、关键词证据和用户真实关注点。
-      </div>
-    </div>
-    <div style="min-width:220px;text-align:right;color:#64748B;font-size:.82rem;line-height:1.5">
-      <b style="color:#111827">Weekly Operating View</b><br>
-      只保留近四周主看板数据 · 四周前数据自动归档
-    </div>
+  <div class="signal-badge">North America Consumer Trend Radar</div>
+  <div class="hero-title">North America<br>Consumer Signal Radar</div>
+  <div class="hero-sub">
+    A TikTok Shop style signal room for weekly Reddit consumer movement, emerging product demand,
+    and keyword evidence from real discussions.
   </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ── Global controls row (always visible) ──────────────────────────────────────
-ctrl1, ctrl2, ctrl3, ctrl4 = st.columns([2, 2, 3, 1])
-with ctrl1:
+# ── Entry controls (centered) ─────────────────────────────────────────────────
+st.markdown('<div class="nav-shell"><div class="nav-title">Choose signal week and workspace</div>', unsafe_allow_html=True)
+nav_l, nav_r = st.columns(2)
+with nav_l:
     selected_window = st.selectbox(
-        "📅 时间周期 / Period",
+        "时间周期 / Period",
         options=win_labels,
         index=0,
+        label_visibility="collapsed",
     )
-with ctrl2:
+with nav_r:
     selected_view = st.selectbox(
-        "🔭 工作台 / Workflow",
+        "进入工作台 / Enter Workspace",
         options=[
             "趋势总览 / Trend Command Center",
             "飙升排查 / Spike Radar",
@@ -187,16 +242,9 @@ with ctrl2:
             "预测实验室 / Forecast Lab",
         ],
         index=0,
+        label_visibility="collapsed",
     )
-with ctrl3:
-    dir_filter = st.multiselect(
-        "趋势方向 / Direction",
-        options=["rising", "stable", "declining"],
-        default=["rising", "stable", "declining"],
-        format_func=lambda x: f"{DIR_EMO[x]} {DIR_ZH[x]} · {DIR_EN[x]}",
-    )
-with ctrl4:
-    top_n = st.slider("Top N", 5, 60, 25, 5)
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Load selected window data ─────────────────────────────────────────────────
 wd             = windows_data[selected_window]
@@ -214,12 +262,36 @@ period_label    = f"{win['cur_start'].strftime('%Y/%m/%d')} → {win['cur_end'].
 compare_label   = f"{win['prev_start'].strftime('%Y/%m/%d')} → {win['prev_end'].strftime('%Y/%m/%d')}"
 
 # ── KPI summary row ───────────────────────────────────────────────────────────
-k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("📅 分析区间", selected_window, delta=period_label, delta_color="off")
-k2.metric("活跃类目 Clusters", f"{len(stats_all):,}")
-k3.metric("🟢 上升 Rising", f"{rising_total:,}", delta=f"{rising_total/max(len(stats_all),1):.0%}")
-k4.metric("⚪ 平稳 Stable", f"{stable_total:,}", delta=f"{stable_total/max(len(stats_all),1):.0%}", delta_color="off")
-k5.metric("🔴 下降 Declining", f"{declining_total:,}", delta=f"{declining_total/max(len(stats_all),1):.0%}", delta_color="inverse")
+cluster_total = max(len(stats_all), 1)
+st.markdown(f"""
+<div class="trend-stat-grid">
+  <div class="trend-stat">
+    <div class="label">分析区间 Period</div>
+    <div class="value period">{selected_window}</div>
+    <div class="delta">{period_label}</div>
+  </div>
+  <div class="trend-stat">
+    <div class="label">活跃类目 Clusters</div>
+    <div class="value">{len(stats_all):,}</div>
+    <div class="delta">weekly taxonomy coverage</div>
+  </div>
+  <div class="trend-stat">
+    <div class="label">上升 Rising</div>
+    <div class="value" style="color:{COLORS['rising']}">{rising_total:,}</div>
+    <div class="delta">{rising_total/cluster_total:.0%} of clusters</div>
+  </div>
+  <div class="trend-stat">
+    <div class="label">平稳 Stable</div>
+    <div class="value" style="color:#F8FAFC">{stable_total:,}</div>
+    <div class="delta">{stable_total/cluster_total:.0%} of clusters</div>
+  </div>
+  <div class="trend-stat">
+    <div class="label">下降 Declining</div>
+    <div class="value" style="color:{COLORS['declining']}">{declining_total:,}</div>
+    <div class="delta">{declining_total/cluster_total:.0%} of clusters</div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
 
 st.markdown(
     f"<div class='chart-caption' style='margin-top:6px'>"
@@ -237,6 +309,17 @@ def cat_label(c: str) -> str:
 # VIEW 1 — 趋势总览 / Trend Command Center
 # ════════════════════════════════════════════════════════════════════════════
 if selected_view == "趋势总览 / Trend Command Center":
+
+    fc1, fc2 = st.columns([3, 1])
+    with fc1:
+        dir_filter = st.multiselect(
+            "趋势方向 / Direction",
+            options=["rising", "stable", "declining"],
+            default=["rising", "stable", "declining"],
+            format_func=lambda x: f"{DIR_EMO[x]} {DIR_ZH[x]} · {DIR_EN[x]}",
+        )
+    with fc2:
+        top_n = st.slider("Top N", 5, 60, 25, 5)
 
     stats = stats_all[stats_all["trend_direction"].isin(dir_filter)].copy()
     if stats.empty:
@@ -278,10 +361,13 @@ if selected_view == "趋势总览 / Trend Command Center":
         fig_bar.update_layout(
             barmode="overlay",
             height=max(420, top_n * 22),
-            yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10)),
-            xaxis=dict(title="综合趋势分 / Trend Score", range=[0, 1.15]),
-            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
-            plot_bgcolor="white", paper_bgcolor="white",
+            yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10, color="#C9D7EA")),
+            xaxis=dict(title="综合趋势分 / Trend Score", range=[0, 1.15],
+                       showgrid=True, gridcolor="rgba(201,215,234,.12)"),
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0,
+                        font=dict(color="#D8F7F6")),
+            font=dict(color="#E5EEF9"),
+            plot_bgcolor="rgba(5,8,22,.62)", paper_bgcolor="rgba(0,0,0,0)",
             margin=dict(l=10, r=60, t=30, b=30),
         )
         st.plotly_chart(fig_bar, use_container_width=True)
@@ -297,10 +383,10 @@ if selected_view == "趋势总览 / Trend Command Center":
             top_stats["current_mentions"] / top_stats["current_mentions"].max() * 55 + 8
         ).round()
         fig_bub = go.Figure()
-        for x0,y0,x1,y1,col in [(.5,.5,1.05,1.05,"#F0FDF4"),
-                                  (0,.5,.5,1.05,"#F8FAFC"),
-                                  (.5,0,1.05,.5,"#EFF6FF"),
-                                  (0,0,.5,.5,"#FAFAFA")]:
+        for x0,y0,x1,y1,col in [(.5,.5,1.05,1.05,"rgba(0,242,169,.12)"),
+                                  (0,.5,.5,1.05,"rgba(148,163,184,.10)"),
+                                  (.5,0,1.05,.5,"rgba(0,242,234,.10)"),
+                                  (0,0,.5,.5,"rgba(255,255,255,.04)")]:
             fig_bub.add_shape(type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
                               fillcolor=col, opacity=.55, line_width=0)
         for d in ["rising", "stable", "declining"]:
@@ -312,9 +398,9 @@ if selected_view == "趋势总览 / Trend Command Center":
                 mode="markers+text",
                 name=f"{DIR_EMO[d]} {DIR_ZH[d]}",
                 marker=dict(size=sub["bsize"], color=COLORS[d], opacity=.75,
-                            line=dict(width=1, color="white")),
+                            line=dict(width=1, color="rgba(255,255,255,.70)")),
                 text=sub["cat_label"].str[:12],
-                textposition="top center", textfont=dict(size=8),
+                textposition="top center", textfont=dict(size=8, color="#E5EEF9"),
                 hovertemplate=(
                     "<b>%{text}</b><br>"
                     "本周热度 Spike: %{x:.2f}<br>"
@@ -330,14 +416,18 @@ if selected_view == "趋势总览 / Trend Command Center":
             (.18, .03, "低优先  Low Priority"),
         ]:
             fig_bub.add_annotation(x=xp, y=yp, text=lab, showarrow=False,
-                                   font=dict(size=8.5, color="#94A3B8"))
-        fig_bub.add_hline(y=.5, line_dash="dot", line_color="#CBD5E1", line_width=1)
-        fig_bub.add_vline(x=.5, line_dash="dot", line_color="#CBD5E1", line_width=1)
+                                   font=dict(size=8.5, color="#A8B5C9"))
+        fig_bub.add_hline(y=.5, line_dash="dot", line_color="rgba(201,215,234,.35)", line_width=1)
+        fig_bub.add_vline(x=.5, line_dash="dot", line_color="rgba(201,215,234,.35)", line_width=1)
         fig_bub.update_layout(
-            xaxis=dict(title="热度增长强度 / Spike Intensity", range=[-.05, 1.1]),
-            yaxis=dict(title="跨社区扩散度 / Cross-community Reach", range=[-.05, 1.1]),
-            height=500, plot_bgcolor="white", paper_bgcolor="white",
-            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
+            xaxis=dict(title="热度增长强度 / Spike Intensity", range=[-.05, 1.1],
+                       showgrid=True, gridcolor="rgba(201,215,234,.12)"),
+            yaxis=dict(title="跨社区扩散度 / Cross-community Reach", range=[-.05, 1.1],
+                       showgrid=True, gridcolor="rgba(201,215,234,.12)"),
+            height=500, plot_bgcolor="rgba(5,8,22,.62)", paper_bgcolor="rgba(0,0,0,0)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0,
+                        font=dict(color="#D8F7F6")),
+            font=dict(color="#E5EEF9"),
             margin=dict(l=10, r=10, t=30, b=30),
         )
         st.plotly_chart(fig_bub, use_container_width=True)
@@ -387,28 +477,28 @@ elif selected_view == "飙升排查 / Spike Radar":
                     st.markdown(f"""
                     <div class="spike-card">
                       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                        <span style="font-size:.7rem;color:#6B7280;font-weight:600">#{idx+1}</span>
+                        <span style="font-size:.7rem;color:#A8B5C9;font-weight:600">#{idx+1}</span>
                         <span style="background:{dcolor}18;color:{dcolor};border-radius:6px;
                               padding:2px 8px;font-size:.7rem;font-weight:600">{dlabel}</span>
                       </div>
-                      <div style="font-size:1rem;font-weight:700;color:#111827;margin-bottom:6px">
+                      <div style="font-size:1rem;font-weight:700;color:#F8FAFC;margin-bottom:6px">
                         {cat_label(cat)}
                       </div>
                       <div style="display:flex;gap:18px;margin-bottom:4px">
                         <div>
                           <div style="font-size:1.35rem;font-weight:700;color:{dcolor}">{row['spike_ratio']:.1f}x</div>
-                          <div style="font-size:.7rem;color:#6B7280">本周热度 Spike</div>
+                          <div style="font-size:.7rem;color:#A8B5C9">本周热度 Spike</div>
                         </div>
                         <div>
-                          <div style="font-size:1.35rem;font-weight:700;color:#111">{int(row['current_mentions']):,}</div>
-                          <div style="font-size:.7rem;color:#6B7280">本周帖子 Posts</div>
+                          <div style="font-size:1.35rem;font-weight:700;color:#F8FAFC">{int(row['current_mentions']):,}</div>
+                          <div style="font-size:.7rem;color:#A8B5C9">本周帖子 Posts</div>
                         </div>
                         <div>
                           <div style="font-size:1.35rem;font-weight:700;
-                               color={'#22C55E' if row['mentions_delta']>=0 else '#EF4444'}">
+                               color={'#00F2A9' if row['mentions_delta']>=0 else '#FF0050'}">
                             {delta_sign}{int(row['mentions_delta']):,}
                           </div>
-                          <div style="font-size:.7rem;color:#6B7280">环比增减 vs Prior Week</div>
+                          <div style="font-size:.7rem;color:#A8B5C9">环比增减 vs Prior Week</div>
                         </div>
                       </div>
                     </div>
@@ -435,10 +525,12 @@ elif selected_view == "飙升排查 / Spike Radar":
                         ))
                         fig_b.update_layout(
                             height=260,
-                            yaxis=dict(categoryorder="total ascending", tickfont=dict(size=9)),
                             xaxis=dict(title="关键词提及量 / Keyword Mentions",
-                                       showgrid=True, gridcolor="#F3F4F6"),
-                            plot_bgcolor="white", paper_bgcolor="white",
+                                       showgrid=True, gridcolor="rgba(201,215,234,.12)"),
+                            yaxis=dict(categoryorder="total ascending",
+                                       tickfont=dict(size=9, color="#C9D7EA")),
+                            font=dict(color="#E5EEF9"),
+                            plot_bgcolor="rgba(5,8,22,.62)", paper_bgcolor="rgba(0,0,0,0)",
                             margin=dict(l=0, r=50, t=5, b=25),
                             showlegend=False,
                         )
@@ -542,10 +634,11 @@ elif selected_view == "类目工作台 / Cluster Workbench":
             ))
             fig_kw.update_layout(
                 height=max(260, t3_n * 46),
-                yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10)),
+                yaxis=dict(categoryorder="total ascending", tickfont=dict(size=10, color="#C9D7EA")),
                 xaxis=dict(title="本周关键词提及量 / Weekly Keyword Mentions",
-                           showgrid=True, gridcolor="#F3F4F6"),
-                plot_bgcolor="white", paper_bgcolor="white",
+                           showgrid=True, gridcolor="rgba(201,215,234,.12)"),
+                font=dict(color="#E5EEF9"),
+                plot_bgcolor="rgba(5,8,22,.62)", paper_bgcolor="rgba(0,0,0,0)",
                 margin=dict(l=10, r=80, t=10, b=30),
                 showlegend=False,
             )
@@ -589,13 +682,15 @@ elif selected_view == "类目工作台 / Cluster Workbench":
 
             st.markdown(f"""
             <style>
+            .kw-matrix{{background:rgba(8,13,28,.56);border:1px solid rgba(0,242,234,.16);
+              border-radius:14px;overflow:hidden;backdrop-filter:blur(16px);}}
             .kw-matrix table{{width:100%;border-collapse:collapse;font-size:.82rem;}}
-            .kw-matrix th{{background:#F8FAFC;padding:7px 10px;text-align:right;
-              font-weight:600;color:#374151;font-size:.75rem;border-bottom:2px solid #E5E7EB;}}
+            .kw-matrix th{{background:rgba(0,242,234,.08);padding:7px 10px;text-align:right;
+              font-weight:600;color:#D8F7F6;font-size:.75rem;border-bottom:1px solid rgba(201,215,234,.14);}}
             .kw-matrix th:first-child{{text-align:left;}}
-            .kw-matrix td{{padding:6px 10px;border-bottom:1px solid #F3F4F6;color:#111;}}
+            .kw-matrix td{{padding:6px 10px;border-bottom:1px solid rgba(201,215,234,.10);color:#F8FAFC;}}
             .kw-matrix tr:last-child td{{border-bottom:none;}}
-            .kw-matrix tr:hover td{{background:#F9FAFB;}}
+            .kw-matrix tr:hover td{{background:rgba(255,255,255,.05);}}
             </style>
             <div class="kw-matrix">
             <table>
@@ -672,16 +767,16 @@ elif selected_view == "类目工作台 / Cluster Workbench":
             date_str = p["published_at"].strftime("%m/%d") if pd.notna(p.get("published_at")) else ""
             sc       = sent_color_map.get(label, COLORS["stable"])
             st_txt   = sent_txt_map.get(label, "")
-            link     = f'<a href="{url}" target="_blank" style="color:#111;text-decoration:none">{title}</a>' if url else title
+            link     = f'<a href="{url}" target="_blank" style="color:#F8FAFC;text-decoration:none">{title}</a>' if url else title
             html_rows += f"""
-            <div style="padding:8px 0;border-bottom:1px solid #F3F4F6">
-              <div style="font-size:.85rem;margin-bottom:3px;line-height:1.4">{link} <span style="font-size:.7rem;color:#2563EB">↗</span></div>
-              <span style="font-size:.72rem;color:#6B7280">r/{comm}</span>
-              <span style="font-size:.72rem;color:#6B7280;margin-left:10px">📅 {date_str}</span>
-              <span style="font-size:.72rem;color:#6B7280;margin-left:10px">互动 {int(score):,}</span>
+            <div style="padding:10px 0;border-bottom:1px solid rgba(201,215,234,.12)">
+              <div style="font-size:.85rem;margin-bottom:3px;line-height:1.4">{link} <span style="font-size:.7rem;color:#00F2EA">↗</span></div>
+              <span style="font-size:.72rem;color:#A8B5C9">r/{comm}</span>
+              <span style="font-size:.72rem;color:#A8B5C9;margin-left:10px">📅 {date_str}</span>
+              <span style="font-size:.72rem;color:#A8B5C9;margin-left:10px">互动 {int(score):,}</span>
               <span style="font-size:.72rem;color:{sc};margin-left:10px">{st_txt}</span>
             </div>"""
-        st.markdown(f'<div style="max-height:520px;overflow-y:auto">{html_rows}</div>',
+        st.markdown(f'<div style="max-height:520px;overflow-y:auto;background:rgba(8,13,28,.52);border:1px solid rgba(0,242,234,.14);border-radius:14px;padding:2px 12px;backdrop-filter:blur(16px)">{html_rows}</div>',
                     unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -722,9 +817,9 @@ elif selected_view == "预测实验室 / Forecast Lab":
                 st.markdown("**🟢 预计上涨 / Likely Rising**")
                 if rising_cats:
                     items = "".join(
-                        f'<div style="padding:5px 10px;margin:3px 0;background:#F0FDF4;'
+                        f'<div style="padding:5px 10px;margin:3px 0;background:rgba(0,242,169,.10);'
                         f'border-left:3px solid {COLORS["rising"]};border-radius:4px;'
-                        f'font-size:.85rem;color:#111">{cat_label(c)}</div>'
+                        f'font-size:.85rem;color:#F8FAFC">{cat_label(c)}</div>'
                         for c in rising_cats
                     )
                     st.markdown(items, unsafe_allow_html=True)
@@ -734,9 +829,9 @@ elif selected_view == "预测实验室 / Forecast Lab":
                 st.markdown("**🔴 预计下行 / Likely Declining**")
                 if declining_cats:
                     items = "".join(
-                        f'<div style="padding:5px 10px;margin:3px 0;background:#FFF1F2;'
+                        f'<div style="padding:5px 10px;margin:3px 0;background:rgba(255,0,80,.10);'
                         f'border-left:3px solid {COLORS["declining"]};border-radius:4px;'
-                        f'font-size:.85rem;color:#111">{cat_label(c)}</div>'
+                        f'font-size:.85rem;color:#F8FAFC">{cat_label(c)}</div>'
                         for c in declining_cats
                     )
                     st.markdown(items, unsafe_allow_html=True)
@@ -781,8 +876,8 @@ elif selected_view == "预测实验室 / Forecast Lab":
             fig_p.add_trace(go.Scatter(
                 x=hist["ds"], y=hist["actual"],
                 mode="lines+markers",
-                line=dict(color="#111827", width=2),
-                marker=dict(size=5, color="#111827"),
+                line=dict(color="#F8FAFC", width=2),
+                marker=dict(size=5, color="#F8FAFC"),
                 name="实际提及量 Actual",
             ))
             if not pred.empty:
@@ -820,7 +915,7 @@ elif selected_view == "预测实验室 / Forecast Lab":
                     line_dash="dot", line_color="#A78BFA", line_width=1.2,
                     annotation=dict(
                         text=hlabel, font=dict(size=8, color="#7C3AED"),
-                        bgcolor="rgba(255,255,255,0.75)",
+                        bgcolor="rgba(8,13,28,0.75)",
                         borderpad=2, yanchor="top",
                         yshift=YSHIFTS[i % 3],
                     ),
@@ -832,10 +927,11 @@ elif selected_view == "预测实验室 / Forecast Lab":
                             annotation_font_size=9, annotation_font_color="#94A3B8")
             fig_p.update_layout(
                 height=560,
-                xaxis=dict(title="周 / Week", showgrid=True, gridcolor="#F3F4F6"),
+                xaxis=dict(title="周 / Week", showgrid=True, gridcolor="rgba(201,215,234,.12)"),
                 yaxis=dict(title="周环比增长倍数 / Weekly Spike (1.0 = flat)",
-                           showgrid=True, gridcolor="#F3F4F6"),
-                plot_bgcolor="white", paper_bgcolor="white",
+                           showgrid=True, gridcolor="rgba(201,215,234,.12)"),
+                font=dict(color="#E5EEF9"),
+                plot_bgcolor="rgba(5,8,22,.62)", paper_bgcolor="rgba(0,0,0,0)",
                 margin=dict(l=10, r=20, t=90, b=40),
                 legend=dict(orientation="h", y=-0.10, font=dict(size=10)),
                 hovermode="x unified",
