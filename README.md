@@ -59,6 +59,37 @@ streamlit run dashboard_v2.py --server.port 8503
 
 ---
 
+## 分享版 Streamlit 自动更新 / Shareable App Refresh
+
+稳定分享版 Streamlit app 建议绑定 GitHub 的稳定分支（例如 `main`），入口文件使用：
+
+```text
+dashboard_v2.py
+```
+
+每次本地或服务器 pipeline 跑完后，执行：
+
+```bash
+python scripts/build_dashboard_500k.py
+python scripts/build_forecast.py          # 可选：如果预测数据也更新
+python scripts/publish_streamlit_snapshot.py --commit --push
+```
+
+这会刷新并提交分享版看板需要的小数据包：
+
+```text
+data/processed/dashboard_data_500k.pkl
+data/processed/brand_posts_index.pkl
+data/processed/forecast_data.pkl
+data/processed/dashboard_manifest.json
+```
+
+Streamlit Cloud 只要连接到同一个 GitHub 分支，就会在 GitHub 收到新 commit 后自动重启并读取最新数据。
+
+不要把 raw data、parquet、embedding、模型大文件推到 GitHub；这些仍然由 `.gitignore` 排除。分享版只使用轻量 processed artifacts。
+
+---
+
 ## 核心算法 / Key Algorithms
 
 | 维度 | 方法 |

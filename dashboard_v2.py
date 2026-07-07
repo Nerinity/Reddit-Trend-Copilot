@@ -5,6 +5,7 @@ Workflow: Trend Command Center | Spike Radar | Cluster Workbench | Forecast Lab
 """
 import pickle
 import base64
+import json
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,7 @@ DATA_PATH        = Path(__file__).parent / "data" / "processed" / "dashboard_dat
 FORECAST_PATH    = Path(__file__).parent / "data" / "processed" / "forecast_data.pkl"
 PARQUET_PATH     = Path(__file__).parent / "data" / "processed" / "nlp_clustered_500k.parquet"
 BRAND_POSTS_PATH = Path(__file__).parent / "data" / "processed" / "brand_posts_index.pkl"
+MANIFEST_PATH    = Path(__file__).parent / "data" / "processed" / "dashboard_manifest.json"
 BG_PATH          = Path(__file__).parent / "assets" / "tiktok_neon_bg.png"
 DEFAULT_WINDOW_LABEL = "06/20–06/27"
 
@@ -315,6 +317,12 @@ def load_posts_df():
     df["published_at"] = pd.to_datetime(df["published_at"], utc=True, errors="coerce")
     return df
 
+@st.cache_data
+def load_dashboard_manifest() -> dict:
+    if not MANIFEST_PATH.exists():
+        return {}
+    return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
 def apply_dynamic_trend_direction(stats: pd.DataFrame) -> pd.DataFrame:
     """Re-label trend direction at dashboard time without rebuilding source data."""
     out = stats.copy()
@@ -370,6 +378,8 @@ def display_period_label(label: str) -> str:
 all_data     = load_data()
 win_labels   = all_data["window_labels"]
 windows_data = all_data["windows"]
+manifest     = load_dashboard_manifest()
+published_at = manifest.get("published_at_utc", "local snapshot")
 default_window_index = (
     win_labels.index(DEFAULT_WINDOW_LABEL)
     if DEFAULT_WINDOW_LABEL in win_labels
@@ -469,7 +479,7 @@ st.markdown(f"""
 
 st.markdown(
     f"<div class='chart-caption' style='margin-top:6px'>"
-    f"<b>本期讨论量</b> {total_mentions:,} 条帖子 · "
+    f"<b>本期讨论量</b> {total_mentions:,} 条帖子 · 数据发布时间 {published_at} · "
     f"当前周期：开始 {period_start_label} / 结束 {period_end_label} · "
     f"对比周期：开始 {compare_start_label} / 结束 {compare_end_label} · "
     "关键词包含品牌、产品词、趋势词和用户关心的具体对象<br>"
