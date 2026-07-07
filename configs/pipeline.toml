@@ -15,6 +15,10 @@ dedupe_keys = ["content_hash"]
 [scheduling]
 daily_collection_cron_utc = "17 10 * * *"
 weekly_backfill_cron_utc = "37 11 * * 1"
+daily_collection_cron_local = "30 7 * * *"
+weekly_dashboard_publish_cron_local = "15 8 * * 1"
+daily_command = "python scripts/scheduled_pipeline.py daily-scrape"
+weekly_publish_command = "python scripts/scheduled_pipeline.py weekly-publish --push"
 
 [monitoring]
 min_rows_per_daily_run = 100

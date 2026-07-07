@@ -6,6 +6,7 @@ data/processed/hdbscan_model.pkl
 data/processed/*.bak_*.pkl
 data/raw/
 data/state/
+data/logs/
 
 # Python
 __pycache__/

@@ -90,6 +90,64 @@ Streamlit Cloud 只要连接到同一个 GitHub 分支，就会在 GitHub 收到
 
 ---
 
+## 自动 Pipeline / Scheduled Pipeline
+
+目标节奏：
+
+| 任务 | 频率 | 命令 |
+|------|------|------|
+| 新数据爬取 | 每天 | `python scripts/scheduled_pipeline.py daily-scrape` |
+| 看板更新 + Streamlit 同步 | 每周一 | `python scripts/scheduled_pipeline.py weekly-publish --push` |
+
+每日任务只更新 raw CSV，不跑 embedding，不重建看板：
+
+```bash
+python scripts/scheduled_pipeline.py daily-scrape
+```
+
+每周一任务会：
+
+1. 先补抓最近几天 raw data
+2. 增量 NLP / embedding / cluster assignment
+3. 重建 dashboard pkl
+4. 重建 forecast pkl
+5. 生成 dashboard manifest
+6. commit + push 轻量 processed artifacts
+7. Streamlit Cloud 收到 GitHub commit 后自动刷新分享版看板
+
+```bash
+python scripts/scheduled_pipeline.py weekly-publish --push
+```
+
+在本机安装 crontab：
+
+```bash
+bash scripts/install_local_cron.sh
+```
+
+默认本地时间：
+
+```text
+每天 07:30   daily-scrape
+每周一 08:15 weekly-publish --push
+```
+
+查看日志：
+
+```bash
+tail -f data/logs/cron_daily_scrape.log
+tail -f data/logs/cron_weekly_publish.log
+tail -f data/logs/weekly-publish_*.log
+```
+
+查看最近一次 pipeline 状态：
+
+```bash
+cat data/state/scheduled_pipeline_state.json
+```
+
+---
+
 ## 核心算法 / Key Algorithms
 
 | 维度 | 方法 |

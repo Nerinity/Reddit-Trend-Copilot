@@ -20,7 +20,10 @@ jobs:
           python-version: "3.11"
 
       - name: Check Python syntax
-        run: python -m py_compile dashboard_v2.py scripts/publish_streamlit_snapshot.py
+        run: python -m py_compile dashboard_v2.py scripts/publish_streamlit_snapshot.py scripts/scheduled_pipeline.py
+
+      - name: Check cron installer syntax
+        run: bash -n scripts/install_local_cron.sh
 
       - name: Validate dashboard artifacts
         run: python scripts/publish_streamlit_snapshot.py
