@@ -1104,17 +1104,28 @@ def main() -> None:
             ARCHIVE_PKL,
         )
 
+    dashboard_tz = "America/Los_Angeles"
+    latest_local = latest.tz_convert(dashboard_tz)
+    days_since_sunday = (latest_local.dayofweek + 1) % 7
+    latest_week_start_local = latest_local.normalize() - pd.Timedelta(days=days_since_sunday)
+
     windows : dict[str, dict] = {}
     for i in range(4):
-        end        = latest - pd.Timedelta(days=7 * i)
-        start      = end    - pd.Timedelta(days=7)
-        prev_end   = start
-        prev_start = start  - pd.Timedelta(days=7)
-        label = f"{start.strftime('%m/%d')}–{end.strftime('%m/%d')}"
+        start_local      = latest_week_start_local - pd.Timedelta(days=7 * i)
+        end_local        = start_local + pd.Timedelta(days=7)
+        prev_start_local = start_local - pd.Timedelta(days=7)
+        prev_end_local   = start_local
+        start      = start_local.tz_convert("UTC")
+        end        = end_local.tz_convert("UTC")
+        prev_start = prev_start_local.tz_convert("UTC")
+        prev_end   = prev_end_local.tz_convert("UTC")
+        label_end  = end_local - pd.Timedelta(days=1)
+        label = f"{start_local.strftime('%m/%d')}–{label_end.strftime('%m/%d')}"
         windows[label] = dict(
             cur_start=start, cur_end=end,
             prev_start=prev_start, prev_end=prev_end,
             cadence="weekly",
+            timezone=dashboard_tz,
         )
 
     whitelist = load_whitelist()
@@ -1145,6 +1156,15 @@ def main() -> None:
         df_cur  = df[(df["published_at"] >= win["cur_start"])  & (df["published_at"] < win["cur_end"])]
         df_prev = df[(df["published_at"] >= win["prev_start"]) & (df["published_at"] < win["prev_end"])]
         log.info("  cur=%d  prev=%d", len(df_cur), len(df_prev))
+        coverage_ratio = len(df_cur) / max(len(df_prev), 1)
+        cur_active_days = df_cur["published_at"].dt.tz_convert(dashboard_tz).dt.date.nunique()
+        prev_active_days = df_prev["published_at"].dt.tz_convert(dashboard_tz).dt.date.nunique()
+        low_coverage = coverage_ratio < 0.75 or cur_active_days < 6
+        if low_coverage:
+            log.info(
+                "  low coverage detected: ratio=%.3f cur_days=%d prev_days=%d; using share-normalized direction",
+                coverage_ratio, cur_active_days, prev_active_days,
+            )
 
         # Category-level stats
         cur_s  = agg_period(df_cur).add_suffix("_c").rename(columns={"category_c":  "category"})
@@ -1177,8 +1197,34 @@ def main() -> None:
         ).round(4)
 
         stats["mentions_delta"] = (stats["mentions_c"] - stats["mentions_p"]).astype(int)
+        cur_total = max(stats["mentions_c"].sum(), 1)
+        prev_total = max(stats["mentions_p"].sum(), 1)
+        stats["current_share"] = (stats["mentions_c"] / cur_total).round(6)
+        stats["previous_share"] = (stats["mentions_p"] / prev_total).round(6)
+        stats["share_spike"] = (
+            stats["current_share"] / stats["previous_share"].replace(0, 1 / prev_total)
+        ).replace([np.inf, -np.inf], 0).fillna(0).round(3)
+        stats["coverage_adjusted_mentions"] = (stats["current_share"] * prev_total).round(1)
+        stats["normalized_delta"] = (
+            stats["coverage_adjusted_mentions"] - stats["mentions_p"]
+        ).round(1)
+        stats["coverage_ratio"] = round(coverage_ratio, 4)
+        stats["current_active_days"] = int(cur_active_days)
+        stats["previous_active_days"] = int(prev_active_days)
+        stats["data_quality_flag"] = "partial_week" if low_coverage else "complete_week"
 
         def _classify_direction(row: pd.Series) -> str:
+            if low_coverage:
+                if (row["mentions_c"] >= 20 and
+                    row["normalized_delta"] >= 50 and
+                    row["share_spike"] >= 1.25 and
+                    row["communities_c"] >= 3):
+                    return "rising"
+                if (row["mentions_p"] >= 50 and
+                    row["normalized_delta"] <= -50 and
+                    row["share_spike"] <= 0.75):
+                    return "declining"
+                return "stable"
             if (row["mentions_c"]    >= 50 and
                 row["mentions_delta"] >= 50 and
                 row["spike_ratio"]   >= 1.6 and
@@ -1266,7 +1312,10 @@ def main() -> None:
     # For each (category, brand) in the latest window, store top 10 posts by engagement.
     log.info("Building brand posts index …")
     latest_win   = list(windows.keys())[0]
-    latest_df    = df[df["published_at"] >= windows[latest_win]["cur_start"]].copy()
+    latest_df    = df[
+        (df["published_at"] >= windows[latest_win]["cur_start"]) &
+        (df["published_at"] < windows[latest_win]["cur_end"])
+    ].copy()
     POST_COLS    = ["title", "community", "engagement_score", "sentiment_label",
                     "url", "published_at"]
     brand_posts_index: dict[str, dict[str, list[dict]]] = {}

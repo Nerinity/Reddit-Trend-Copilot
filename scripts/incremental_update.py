@@ -69,6 +69,11 @@ def find_new_rows() -> pd.DataFrame:
     raw = pd.read_csv(RAW_CSV, low_memory=False)
     raw["mention_id"] = raw["mention_id"].astype(str)
     new = raw[~raw["mention_id"].isin(existing_ids)].copy()
+    before_dedup = len(new)
+    new = new.drop_duplicates(subset=["mention_id"])
+    if before_dedup != len(new):
+        log.warning("Raw CSV had %d duplicate mention_ids among new rows — dropped to %d unique",
+                    before_dedup - len(new), len(new))
     log.info("New rows to process: %d", len(new))
     return new
 
@@ -177,42 +182,68 @@ def assign_clusters(new_vecs: np.ndarray) -> np.ndarray:
 # ── Step 5 & 6: Append to parquets + npy ─────────────────────────────────────
 
 def append_to_parquets(df: pd.DataFrame, cluster_ids: np.ndarray, new_vecs: np.ndarray) -> None:
+    import pyarrow.parquet as pq
+
     df = df.copy()
     df["cluster_id"] = cluster_ids
 
-    # Align columns to existing parquet schemas
-    sent_cols   = pd.read_parquet(F_SENTIMENT,  columns=[]).columns.tolist()
-    cluster_cols = pd.read_parquet(F_CLUSTER, columns=[]).columns.tolist()
+    # Guard: new rows must have valid mention_ids before we touch any file
+    nan_ids = df["mention_id"].isna().sum()
+    if nan_ids > 0:
+        raise ValueError(f"append_to_parquets: {nan_ids} rows have NaN mention_id — aborting to protect parquets")
+
+    # Read schema via pyarrow (reads metadata only, no data rows)
+    # IMPORTANT: do NOT pass columns=[] to pd.read_parquet — it returns 0 columns
+    sent_cols    = pq.read_schema(F_SENTIMENT).names
+    cluster_cols = pq.read_schema(F_CLUSTER).names
+
+    if not sent_cols or not cluster_cols:
+        raise RuntimeError("Schema read returned empty column list — aborting")
 
     def _align(frame: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+        frame = frame.copy()
         for c in cols:
             if c not in frame.columns:
                 frame[c] = None
-        return frame[cols]
+        aligned = frame[cols]
+        # Guard: aligned frame must preserve mention_id
+        if "mention_id" in cols and aligned["mention_id"].isna().any():
+            raise ValueError("_align produced NaN mention_ids — column mismatch detected")
+        return aligned
+
+    new_sent  = _align(df, sent_cols)
+    new_clust = _align(df, cluster_cols)
 
     log.info("Appending %d rows to sentiment parquet …", len(df))
-    old_sent = pd.read_parquet(F_SENTIMENT)
-    new_sent = pd.concat([old_sent, _align(df, sent_cols)], ignore_index=True)
-    new_sent.to_parquet(F_SENTIMENT, index=False)
+    old_sent  = pd.read_parquet(F_SENTIMENT)
+    combined_sent = pd.concat([old_sent, new_sent], ignore_index=True)
+    assert combined_sent["mention_id"].notna().sum() >= len(old_sent), \
+        "Post-append: mention_id valid count dropped — aborting"
+    combined_sent.to_parquet(F_SENTIMENT, index=False)
 
     log.info("Appending %d rows to cluster parquet …", len(df))
-    old_clust = pd.read_parquet(F_CLUSTER)
-    new_clust = pd.concat([old_clust, _align(df, cluster_cols)], ignore_index=True)
-    new_clust.to_parquet(F_CLUSTER, index=False)
+    old_clust  = pd.read_parquet(F_CLUSTER)
+    combined_clust = pd.concat([old_clust, new_clust], ignore_index=True)
+    assert combined_clust["mention_id"].notna().sum() >= len(old_clust), \
+        "Post-append: mention_id valid count dropped — aborting"
+    combined_clust.to_parquet(F_CLUSTER, index=False)
 
     log.info("Appending embeddings to .npy …")
     old_vecs = np.load(F_EMB_NPY)
-    combined = np.vstack([old_vecs, new_vecs])
-    np.save(F_EMB_NPY, combined)
+    combined_vecs = np.vstack([old_vecs, new_vecs])
+    np.save(F_EMB_NPY, combined_vecs)
 
     old_ids = F_EMB_IDS.read_text().strip().split("\n")
     new_ids = df["mention_id"].astype(str).tolist()
     F_EMB_IDS.write_text("\n".join(old_ids + new_ids))
 
     log.info("Parquets and embeddings updated.")
-    log.info("  sentiment: %d rows", len(new_sent))
-    log.info("  cluster:   %d rows", len(new_clust))
-    log.info("  embeddings: %s", combined.shape)
+    log.info("  sentiment: %d rows", len(combined_sent))
+    log.info("  cluster:   %d rows", len(combined_clust))
+    log.info("  embeddings: %s", combined_vecs.shape)
+    log.info("  mention_id nulls after append — sentiment: %d  cluster: %d",
+             combined_sent["mention_id"].isna().sum(),
+             combined_clust["mention_id"].isna().sum())
 
 
 # ── Step 7 & 8: Rebuild dashboard + forecast ─────────────────────────────────

@@ -279,6 +279,8 @@ def main() -> None:
             df = df.drop(columns=[col])
 
     result["mention_id"] = result["mention_id"].astype(str)
+    result = result.drop_duplicates(subset=["mention_id"], keep="first")
+    df = df.drop_duplicates(subset=["mention_id"], keep="first")
     df = df.merge(result, on="mention_id", how="left")
     df["target_cluster"]       = df["target_cluster"].fillna("unassigned")
     df["target_cluster_id"]    = df["target_cluster_id"].fillna("C000")
